@@ -1,0 +1,9 @@
+full_name,email,user_type,date_of_birth,phone_number,bio
+Valid Student,valid.student@school.edu,student,2003-02-14,+1-555-2001,This row is valid
+Another Valid,another.valid@school.edu,teacher,1988-11-20,+1-555-2002,Valid teacher row
+No Email,,student,2003-01-01,+1-555-2003,This row has no email - will fail
+Bad Type,bad.type@school.edu,admin,2003-01-01,+1-555-2004,Invalid user_type - will fail
+Bad Date,bad.date@school.edu,student,not-a-date,+1-555-2005,Invalid date - will fail
+Duplicate Email,alice@elearning.com,student,2003-01-01,+1-555-2006,Email already registered - will fail
+Valid Again,valid.again@school.edu,student,2002-05-05,+1-555-2007,This row is valid
+Empty Bio OK,empty.bio@school.edu,student,2003-06-10,+1-555-2008,

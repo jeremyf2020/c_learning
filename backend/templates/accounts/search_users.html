@@ -1,0 +1,110 @@
+{% extends 'base.html' %}
+
+{% block title %}Search Users - eLearning Platform{% endblock %}
+
+{% block content %}
+<div class="row mt-4">
+    <div class="col-md-12">
+        <h2 class="mb-4">Search Users</h2>
+
+        <div class="card shadow mb-4">
+            <div class="card-body">
+                <form method="get" class="row g-3">
+                    <div class="col-md-4">
+                        <input type="text" name="q" class="form-control" placeholder="Search by username or full name"
+                               value="{{ request.GET.q }}">
+                    </div>
+                    <div class="col-md-3">
+                        <select name="user_type" class="form-select">
+                            <option value="">All User Types</option>
+                            <option value="student" {% if request.GET.user_type == 'student' %}selected{% endif %}>Students</option>
+                            <option value="teacher" {% if request.GET.user_type == 'teacher' %}selected{% endif %}>Teachers</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <select name="status" class="form-select">
+                            <option value="">All Status</option>
+                            <option value="active" {% if request.GET.status == 'active' %}selected{% endif %}>Active</option>
+                            <option value="blocked" {% if request.GET.status == 'blocked' %}selected{% endif %}>Blocked</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <button type="submit" class="btn btn-primary">Search</button>
+                        <a href="{% url 'accounts:search_users' %}" class="btn btn-secondary">Reset</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        {% if users %}
+            <div class="card shadow">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">Search Results ({{ users|length }} users found)</h5>
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>User</th>
+                                    <th>Full Name</th>
+                                    <th>Email</th>
+                                    <th>Type</th>
+                                    <th>Status</th>
+                                    <th>Joined</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for user_obj in users %}
+                                    <tr>
+                                        <td>
+                                            <div class="d-flex align-items-center">
+                                                {% if user_obj.photo %}
+                                                    <img src="{{ user_obj.photo.url }}" alt="{{ user_obj.username }}"
+                                                         class="rounded-circle me-2" style="width: 40px; height: 40px; object-fit: cover;">
+                                                {% else %}
+                                                    <div class="rounded-circle bg-secondary text-white d-flex align-items-center justify-content-center me-2"
+                                                         style="width: 40px; height: 40px; font-size: 16px;">
+                                                        {{ user_obj.username|first|upper }}
+                                                    </div>
+                                                {% endif %}
+                                                <strong>{{ user_obj.username }}</strong>
+                                            </div>
+                                        </td>
+                                        <td>{{ user_obj.full_name|default:"-" }}</td>
+                                        <td>{{ user_obj.email }}</td>
+                                        <td>
+                                            <span class="badge {% if user_obj.is_teacher %}bg-success{% else %}bg-primary{% endif %}">
+                                                {{ user_obj.get_user_type_display }}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            {% if user_obj.is_blocked %}
+                                                <span class="badge bg-danger">Blocked</span>
+                                            {% else %}
+                                                <span class="badge bg-success">Active</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ user_obj.created_at|date:"M d, Y" }}</td>
+                                        <td>
+                                            <a href="{% url 'accounts:profile' user_obj.username %}"
+                                               class="btn btn-sm btn-outline-primary">View Profile</a>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        {% elif request.GET.q %}
+            <div class="alert alert-info">
+                No users found matching your search criteria.
+            </div>
+        {% else %}
+            <div class="alert alert-info">
+                Enter search criteria to find users.
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

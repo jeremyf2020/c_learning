@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+
+{% block title %}Welcome - eLearning Platform{% endblock %}
+
+{% block content %}
+<div class="row mt-5">
+    <div class="col-md-8 offset-md-2 text-center">
+        <h1 class="display-4">Welcome to eLearning Platform</h1>
+        <p class="lead">A comprehensive platform for online learning and collaboration</p>
+        <hr class="my-4">
+        <p>Connect with teachers and students, enroll in courses, and learn together!</p>
+        <a class="btn btn-primary btn-lg me-2" href="{% url 'accounts:register' %}">Get Started</a>
+        <a class="btn btn-outline-primary btn-lg" href="{% url 'accounts:login' %}">Sign In</a>
+    </div>
+</div>
+
+<div class="row mt-5">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">For Students</h5>
+                <p class="card-text">Browse and enroll in courses, submit feedback, and track your progress.</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">For Teachers</h5>
+                <p class="card-text">Create courses, upload materials, manage students, and track enrollment.</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Real-Time Chat</h5>
+                <p class="card-text">Communicate with other users through our real-time chat system.</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,161 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ profile_user.username }}'s Profile - eLearning Platform{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-4">
+        <div class="card shadow mb-4">
+            <div class="card-body text-center">
+                {% if profile_user.photo %}
+                    <img src="{{ profile_user.photo.url }}" alt="{{ profile_user.username }}"
+                         class="rounded-circle mb-3" style="width: 150px; height: 150px; object-fit: cover;">
+                {% else %}
+                    <div class="rounded-circle bg-secondary text-white d-flex align-items-center justify-content-center mb-3 mx-auto"
+                         style="width: 150px; height: 150px; font-size: 48px;">
+                        {{ profile_user.username|first|upper }}
+                    </div>
+                {% endif %}
+
+                <h3>{{ profile_user.username }}</h3>
+                {% if profile_user.full_name %}
+                    <p class="text-muted">{{ profile_user.full_name }}</p>
+                {% endif %}
+                <span class="badge {% if profile_user.is_teacher %}bg-success{% else %}bg-primary{% endif %}">
+                    {{ profile_user.get_user_type_display }}
+                </span>
+
+                {% if profile_user.is_blocked %}
+                    <div class="alert alert-danger mt-3">This account is blocked</div>
+                {% endif %}
+
+                <hr>
+
+                {% if profile_user.bio %}
+                    <p class="text-start"><strong>Bio:</strong></p>
+                    <p class="text-muted text-start">{{ profile_user.bio }}</p>
+                {% endif %}
+
+                {% if profile_user.email %}
+                    <p class="text-start"><strong>Email:</strong> {{ profile_user.email }}</p>
+                {% endif %}
+
+                {% if profile_user.phone_number %}
+                    <p class="text-start"><strong>Phone:</strong> {{ profile_user.phone_number }}</p>
+                {% endif %}
+
+                {% if profile_user.date_of_birth %}
+                    <p class="text-start"><strong>Date of Birth:</strong> {{ profile_user.date_of_birth|date:"F d, Y" }}</p>
+                {% endif %}
+
+                <p class="text-start text-muted"><small>Member since {{ profile_user.created_at|date:"F Y" }}</small></p>
+
+                {% if user == profile_user %}
+                    <a href="{% url 'accounts:update_profile' %}" class="btn btn-primary w-100 mt-3">Edit Profile</a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-8">
+        <!-- Status Updates Section -->
+        <div class="card shadow mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Status Updates</h5>
+                {% if user == profile_user %}
+                    <a href="{% url 'accounts:create_status' %}" class="btn btn-sm btn-primary">New Status</a>
+                {% endif %}
+            </div>
+            <div class="card-body">
+                {% if status_updates %}
+                    {% for status in status_updates %}
+                        <div class="border-bottom pb-3 mb-3">
+                            <p>{{ status.content }}</p>
+                            <small class="text-muted">{{ status.created_at|date:"F d, Y g:i A" }}</small>
+                            {% if user == profile_user %}
+                                <a href="{% url 'accounts:delete_status' status.id %}"
+                                   class="btn btn-sm btn-danger float-end">Delete</a>
+                            {% endif %}
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <p class="text-muted">No status updates yet.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Enrolled Courses Section (for Students) -->
+        {% if profile_user.is_student %}
+            <div class="card shadow mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">Enrolled Courses</h5>
+                </div>
+                <div class="card-body">
+                    {% if enrollments %}
+                        <div class="list-group">
+                            {% for enrollment in enrollments %}
+                                <a href="{% url 'courses:course_detail' enrollment.course.id %}"
+                                   class="list-group-item list-group-item-action">
+                                    <div class="d-flex w-100 justify-content-between">
+                                        <h6 class="mb-1">{{ enrollment.course.title }}</h6>
+                                        <small>
+                                            {% if enrollment.completed %}
+                                                <span class="badge bg-success">Completed</span>
+                                            {% elif enrollment.is_active %}
+                                                <span class="badge bg-primary">Active</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">Inactive</span>
+                                            {% endif %}
+                                        </small>
+                                    </div>
+                                    <p class="mb-1 text-muted">{{ enrollment.course.code }}</p>
+                                    <small class="text-muted">Enrolled: {{ enrollment.enrolled_at|date:"F d, Y" }}</small>
+                                </a>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <p class="text-muted">Not enrolled in any courses yet.</p>
+                        <a href="{% url 'courses:course_list' %}" class="btn btn-primary">Browse Courses</a>
+                    {% endif %}
+                </div>
+            </div>
+        {% endif %}
+
+        <!-- Taught Courses Section (for Teachers) -->
+        {% if profile_user.is_teacher %}
+            <div class="card shadow mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Taught Courses</h5>
+                    {% if user == profile_user %}
+                        <a href="{% url 'courses:course_create' %}" class="btn btn-sm btn-success">Create Course</a>
+                    {% endif %}
+                </div>
+                <div class="card-body">
+                    {% if taught_courses %}
+                        <div class="list-group">
+                            {% for course in taught_courses %}
+                                <a href="{% url 'courses:course_detail' course.id %}"
+                                   class="list-group-item list-group-item-action">
+                                    <div class="d-flex w-100 justify-content-between">
+                                        <h6 class="mb-1">{{ course.title }}</h6>
+                                        <span class="badge {% if course.is_active %}bg-success{% else %}bg-secondary{% endif %}">
+                                            {% if course.is_active %}Active{% else %}Inactive{% endif %}
+                                        </span>
+                                    </div>
+                                    <p class="mb-1 text-muted">{{ course.code }}</p>
+                                    <small class="text-muted">{{ course.get_enrolled_students_count }} students enrolled</small>
+                                </a>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <p class="text-muted">No courses created yet.</p>
+                        {% if user == profile_user %}
+                            <a href="{% url 'courses:course_create' %}" class="btn btn-primary">Create Your First Course</a>
+                        {% endif %}
+                    {% endif %}
+                </div>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

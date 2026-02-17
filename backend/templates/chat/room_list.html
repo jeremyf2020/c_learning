@@ -1,0 +1,117 @@
+{% extends 'base.html' %}
+
+{% block title %}Chat Rooms - eLearning Platform{% endblock %}
+
+{% block content %}
+<div class="row mt-4">
+    <div class="col-md-8 offset-md-2">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2>Chat Rooms</h2>
+            <a href="{% url 'chat:create_room' %}" class="btn btn-success">Create New Room</a>
+        </div>
+
+        {% if rooms %}
+            <div class="card shadow">
+                <div class="card-body">
+                    <div class="list-group">
+                        {% for room in rooms %}
+                            <a href="{% url 'chat:room' room.id %}" class="list-group-item list-group-item-action">
+                                <div class="d-flex w-100 justify-content-between align-items-start">
+                                    <div>
+                                        <h5 class="mb-1">{{ room.name }}</h5>
+                                        <p class="mb-1 text-muted">
+                                            <small>
+                                                {{ room.participants.count }} participant{{ room.participants.count|pluralize }}
+                                            </small>
+                                        </p>
+                                        <div class="mb-2">
+                                            {% for participant in room.participants.all|slice:":5" %}
+                                                {% if participant.photo %}
+                                                    <img src="{{ participant.photo.url }}" alt="{{ participant.username }}"
+                                                         class="rounded-circle me-1" style="width: 30px; height: 30px; object-fit: cover;"
+                                                         title="{{ participant.username }}">
+                                                {% else %}
+                                                    <div class="rounded-circle bg-secondary text-white d-inline-flex align-items-center justify-content-center me-1"
+                                                         style="width: 30px; height: 30px; font-size: 12px;"
+                                                         title="{{ participant.username }}">
+                                                        {{ participant.username|first|upper }}
+                                                    </div>
+                                                {% endif %}
+                                            {% endfor %}
+                                            {% if room.participants.count > 5 %}
+                                                <span class="badge bg-secondary">+{{ room.participants.count|add:"-5" }} more</span>
+                                            {% endif %}
+                                        </div>
+                                        {% with last_message=room.messages.last %}
+                                            {% if last_message %}
+                                                <small class="text-muted">
+                                                    <strong>{{ last_message.sender.username }}:</strong>
+                                                    {{ last_message.content|truncatewords:10 }}
+                                                </small>
+                                            {% endif %}
+                                        {% endwith %}
+                                    </div>
+                                    <div class="text-end">
+                                        <small class="text-muted">
+                                            {% with last_message=room.messages.last %}
+                                                {% if last_message %}
+                                                    {{ last_message.created_at|timesince }} ago
+                                                {% else %}
+                                                    No messages
+                                                {% endif %}
+                                            {% endwith %}
+                                        </small>
+                                        <br>
+                                        <span class="badge bg-primary mt-2">
+                                            {{ room.messages.count }} message{{ room.messages.count|pluralize }}
+                                        </span>
+                                    </div>
+                                </div>
+                            </a>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Pagination -->
+            {% if is_paginated %}
+                <nav class="mt-4">
+                    <ul class="pagination justify-content-center">
+                        {% if page_obj.has_previous %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page=1">First</a>
+                            </li>
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ page_obj.previous_page_number }}">Previous</a>
+                            </li>
+                        {% endif %}
+
+                        <li class="page-item active">
+                            <span class="page-link">
+                                Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+                            </span>
+                        </li>
+
+                        {% if page_obj.has_next %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ page_obj.next_page_number }}">Next</a>
+                            </li>
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}">Last</a>
+                            </li>
+                        {% endif %}
+                    </ul>
+                </nav>
+            {% endif %}
+        {% else %}
+            <div class="card shadow">
+                <div class="card-body text-center py-5">
+                    <h5 class="text-muted">No chat rooms yet</h5>
+                    <p class="text-muted">Create a chat room to start conversations</p>
+                    <a href="{% url 'chat:create_room' %}" class="btn btn-success">Create Your First Room</a>
+                </div>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
