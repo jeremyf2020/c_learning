@@ -11,7 +11,7 @@ A comprehensive eLearning web application built with Django, featuring course ma
 - [Demo Users](#demo-users)
 - [Application Structure](#application-structure)
 - [API Endpoints](#api-endpoints)
-- [WebSocket Chat](#websocket-chat)
+- [WebSocket Classroom](#websocket-classroom)
 
 ## Features
 
@@ -185,8 +185,8 @@ elearning_project/
 │   ├── api.py            # REST API viewsets
 │   ├── serializers.py    # DRF serializers
 │   └── tests.py          # Unit tests
-├── chat/                 # Real-time chat
-│   ├── models.py         # ChatRoom and ChatMessage models
+├── classroom/                 # Real-time classroom
+│   ├── models.py         # Classroom and ClassroomMessage models
 │   ├── views.py          # Chat room views
 │   ├── consumers.py      # WebSocket consumers
 │   └── routing.py        # WebSocket URL routing
@@ -197,7 +197,7 @@ elearning_project/
 │   ├── base.html        # Base template
 │   ├── accounts/        # Account templates
 │   ├── courses/         # Course templates
-│   └── chat/            # Chat templates
+│   └── classroom/            # Classroom templates
 ├── elearning_project/   # Project settings
 │   ├── settings.py      # Django settings
 │   ├── urls.py          # Main URL configuration
@@ -247,26 +247,26 @@ response = requests.get(
 user = response.json()
 ```
 
-## WebSocket Chat
+## WebSocket Classroom
 
 ### WebSocket URL
 ```
-ws://127.0.0.1:8000/ws/chat/{room_name}/
+ws://127.0.0.1:8000/ws/classroom/{room_name}/
 ```
 
 ### JavaScript Example
 ```javascript
 const roomName = 'general';
-const chatSocket = new WebSocket(
-    'ws://' + window.location.host + '/ws/chat/' + roomName + '/'
+const classroomSocket = new WebSocket(
+    'ws://' + window.location.host + '/ws/classroom/' + roomName + '/'
 );
 
-chatSocket.onmessage = function(e) {
+classroomSocket.onmessage = function(e) {
     const data = JSON.parse(e.data);
     console.log('Message:', data.message);
 };
 
-chatSocket.send(JSON.stringify({
+classroomSocket.send(JSON.stringify({
     'message': 'Hello, World!'
 }));
 ```

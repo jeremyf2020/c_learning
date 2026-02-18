@@ -15,29 +15,31 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.CreateModel(
-            name='ChatRoom',
+            name='Classroom',
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('name', models.CharField(max_length=255)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
-                ('participants', models.ManyToManyField(related_name='chat_rooms', to=settings.AUTH_USER_MODEL)),
+                ('participants', models.ManyToManyField(related_name='classrooms', to=settings.AUTH_USER_MODEL)),
             ],
             options={
                 'ordering': ['-updated_at'],
+                'db_table': 'chat_chatroom',
             },
         ),
         migrations.CreateModel(
-            name='ChatMessage',
+            name='ClassroomMessage',
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('content', models.TextField()),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('room', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='messages', to='chat.chatroom')),
+                ('room', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='messages', to='classroom.classroom')),
                 ('sender', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='sent_messages', to=settings.AUTH_USER_MODEL)),
             ],
             options={
                 'ordering': ['created_at'],
+                'db_table': 'chat_chatmessage',
             },
         ),
     ]

@@ -10,8 +10,9 @@
 | Database | SQLite | Data storage |
 | Server | Daphne (ASGI) | Serves HTTP + WebSocket |
 | Container | Docker + Docker Compose | Environment management |
-| Email | Gmail SMTP / Mailhog | Invitation emails |
+| Email | Gmail SMTP | Notification + invitation emails |
 | AI | OpenAI API (gpt-3.5-turbo) | Quiz/flashcard generation from PDF |
+| API Docs | drf-spectacular (OpenAPI 3.0) | Swagger UI + ReDoc auto-generated docs |
 | PDF | pypdf | Text extraction from uploaded PDFs |
 
 ---
@@ -25,7 +26,11 @@
 ```
 elearning/
 ├── backend/
+│   ├── .dockerignore
+│   └── Dockerfile
 ├── frontend/
+│   ├── .dockerignore
+│   └── Dockerfile
 ├── docker-compose.yml
 └── .env
 ```
@@ -80,7 +85,29 @@ EXPOSE 5173
 CMD ["npm", "run", "dev", "--", "--host"]
 ```
 
-### Step 1.5: Write docker-compose.yml
+### Step 1.5: Write .dockerignore files
+
+**backend/.dockerignore:**
+```
+__pycache__
+*.pyc
+*.pyo
+.env
+db.sqlite3
+media/
+*.log
+.git
+```
+
+**frontend/.dockerignore:**
+```
+node_modules
+dist
+```
+
+These prevent local files from overriding Docker-installed dependencies or leaking secrets into images.
+
+### Step 1.6: Write docker-compose.yml
 
 ```yaml
 services:
@@ -103,7 +130,7 @@ services:
       - /app/node_modules
 ```
 
-### Step 1.6: Write .env file
+### Step 1.7: Write .env file
 
 ```env
 DJANGO_DEBUG=True
@@ -112,7 +139,7 @@ VITE_API_URL=http://localhost:8080/api
 CORS_ALLOWED_ORIGINS=http://localhost:5173
 ```
 
-### Step 1.7: Verify
+### Step 1.8: Verify
 
 ```bash
 docker compose up --build
@@ -120,7 +147,7 @@ docker compose up --build
 - Backend at http://localhost:8080
 - Frontend at http://localhost:5173
 
-**Concepts learned:** Docker, Docker Compose, volumes, environment variables, Vite, Django project structure, CORS
+**Concepts learned:** Docker, Docker Compose, volumes, .dockerignore, environment variables, Vite, Django project structure, CORS
 
 ---
 
@@ -146,6 +173,7 @@ class User(AbstractUser):
     user_type = models.CharField(max_length=10, choices=USER_TYPE_CHOICES, default='student')
     full_name = models.CharField(max_length=200, blank=True)
     bio = models.TextField(blank=True)
+    is_blocked = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def is_student(self):
@@ -173,7 +201,7 @@ python manage.py migrate
 ### Step 2.4: Create auth API endpoints
 
 **`accounts/api.py`:**
-- `auth_login` — Authenticates user, returns Token
+- `auth_login` — Authenticates user, checks `is_blocked`, returns Token
 - `auth_register` — Creates user, returns Token
 - `auth_me` — Returns current user data (requires token)
 
@@ -247,14 +275,19 @@ class Enrollment(models.Model):
         unique_together = ('student', 'course')
 ```
 
-### Step 3.2: Create CourseViewSet with actions
+### Step 3.2: Create CourseViewSet with actions and permission checks
 
 **`courses/api.py`:**
 - Standard CRUD via `ModelViewSet`
-- `@action enroll` — Student enrolls (get_or_create Enrollment)
+- `perform_create` — check `request.user.is_teacher()`, auto-set `teacher=request.user`
+- `perform_update` — verify `instance.teacher == request.user` or raise `PermissionDenied`
+- `perform_destroy` — verify ownership before deleting
+- `@action enroll` — Student enrolls (get_or_create Enrollment), track `reactivated` flag to avoid duplicate notifications
 - `@action unenroll` — Student unenrolls (set is_active=False)
-- `@action students` — List enrolled students
+- `@action students` — List enrolled students (teacher-only)
+- `@action materials` — List course materials (teacher or enrolled students only)
 - `@action add_student` — Teacher force-adds a student
+- `@action block_student` — Teacher removes a student
 
 ### Step 3.3: Register with DRF Router
 
@@ -273,7 +306,7 @@ urlpatterns = [path('api/', include(router.urls))]
 - `CourseCreate.tsx` — Form to create new course
 - `CourseDetail.tsx` — Show course info, enrolled students, enroll/unenroll button
 
-**Concepts learned:** Django models, ForeignKey, unique_together, ModelViewSet, @action decorator, DRF Router, GET/POST/PATCH/DELETE, React state management
+**Concepts learned:** Django models, ForeignKey, unique_together, ModelViewSet, @action decorator, DRF Router, perform_update/perform_destroy for ownership checks, PermissionDenied exception, GET/POST/PATCH/DELETE, React state management
 
 ---
 
@@ -302,11 +335,27 @@ MEDIA_ROOT = BASE_DIR / 'media'
 
 **`urls.py`:** Add `static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)` in DEBUG mode
 
-### Step 4.3: API with MultiPartParser
+### Step 4.3: API with MultiPartParser and ownership checks
 
 ```python
 class CourseMaterialViewSet(viewsets.ModelViewSet):
     parser_classes = [MultiPartParser, JSONParser]
+
+    def perform_create(self, serializer):
+        course = serializer.validated_data.get('course')
+        if course and course.teacher != self.request.user:
+            raise PermissionDenied('You can only upload materials to your own courses.')
+        serializer.save(uploaded_by=self.request.user)
+
+    def perform_update(self, serializer):
+        if serializer.instance.uploaded_by != self.request.user:
+            raise PermissionDenied('You can only edit your own materials.')
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        if instance.uploaded_by != self.request.user:
+            raise PermissionDenied('You can only delete your own materials.')
+        instance.delete()
 ```
 
 ### Step 4.4: Frontend upload UI
@@ -315,7 +364,7 @@ class CourseMaterialViewSet(viewsets.ModelViewSet):
 - Drag-and-drop zone with file type validation
 - Display uploaded materials as a list with download links
 
-**Concepts learned:** FileField, MEDIA_ROOT/MEDIA_URL, MultiPartParser, FormData, multipart/form-data, static file serving in Django
+**Concepts learned:** FileField, MEDIA_ROOT/MEDIA_URL, MultiPartParser, FormData, multipart/form-data, static file serving in Django, ownership checks on create/update/delete
 
 ---
 
@@ -336,19 +385,50 @@ class Feedback(models.Model):
         unique_together = ('course', 'student')
 ```
 
-### Step 5.2: FeedbackViewSet with filtering
+### Step 5.2: FeedbackViewSet with filtering and ownership checks
 
 ```python
 class FeedbackViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
-        qs = Feedback.objects.all()
+        qs = Feedback.objects.select_related('student', 'course')
         course_id = self.request.query_params.get('course')
         if course_id:
             qs = qs.filter(course_id=course_id)
+        # Scope by role — students see enrolled courses only, teachers see own courses only
+        if self.request.user.is_student():
+            enrolled_courses = Enrollment.objects.filter(
+                student=self.request.user, is_active=True
+            ).values_list('course_id', flat=True)
+            qs = qs.filter(course_id__in=enrolled_courses)
+        elif self.request.user.is_teacher():
+            qs = qs.filter(course__teacher=self.request.user)
         return qs
+
+    def perform_create(self, serializer):
+        # Only enrolled students can submit feedback
+        if not self.request.user.is_student():
+            raise PermissionDenied('Only students can submit feedback.')
+        course = serializer.validated_data.get('course')
+        if course and not Enrollment.objects.filter(
+            student=self.request.user, course=course, is_active=True
+        ).exists():
+            raise PermissionDenied('You must be enrolled in this course to leave feedback.')
+        serializer.save(student=self.request.user)
+
+    def perform_update(self, serializer):
+        if serializer.instance.student != self.request.user:
+            raise PermissionDenied('You can only edit your own feedback.')
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        if instance.student != self.request.user:
+            raise PermissionDenied('You can only delete your own feedback.')
+        instance.delete()
 ```
 
 **Important:** When using `get_queryset()` instead of class-level `queryset`, you must pass `basename` to `router.register()`.
+
+**Important:** The `get_queryset` scoping is essential — without it, any authenticated user could see all feedback in the system. By scoping to enrolled courses (students) or owned courses (teachers), feedback data is only visible to users with a legitimate relationship to the course.
 
 ### Step 5.3: Frontend feedback section
 
@@ -358,56 +438,142 @@ class FeedbackViewSet(viewsets.ModelViewSet):
 - Display existing feedback with average rating
 - **Key SPA pattern:** After submitting, append new feedback to state immediately (don't wait for page refresh)
 
-**Concepts learned:** Query parameter filtering, get_queryset vs queryset, basename in router, unique_together for one-review-per-student, optimistic UI updates
+**Concepts learned:** Query parameter filtering, get_queryset vs queryset, basename in router, unique_together for one-review-per-student, select_related for query optimisation, optimistic UI updates
 
 ---
 
-## Phase 6: Notifications
+## Phase 6: Notifications with Email Delivery
 
-**Goal:** Auto-notify students about enrollments, deadlines, new materials.
+**Goal:** Auto-notify users about enrollments, deadlines, new materials — both in-app and via email.
 
 ### Step 6.1: Notification model
 
 ```python
 class Notification(models.Model):
     recipient = models.ForeignKey(User, on_delete=models.CASCADE)
-    notification_type = models.CharField(choices=[...])
+    notification_type = models.CharField(choices=[
+        ('general', 'General'), ('enrollment', 'Enrollment'),
+        ('material', 'Material'), ('feedback', 'Feedback'), ('deadline', 'Deadline'),
+    ])
     title = models.CharField(max_length=200)
     message = models.TextField()
     link = models.CharField(max_length=200, blank=True)
     is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
 ```
 
-### Step 6.2: Create notifications from other actions
+### Step 6.2: Centralised notification utility with email
 
-When a student is enrolled:
+**`notifications/utils.py`:**
 ```python
-Notification.objects.create(
-    recipient=student,
-    notification_type='enrollment',
-    title=f'Added to {course.title}',
-    message='You have been added to...',
-    link=f'/courses/{course.id}',
-)
+from django.core.mail import send_mail, send_mass_mail
+from .models import Notification
+
+def create_notification(*, recipient, notification_type, title, message, link=''):
+    """Create an in-app notification and send an email."""
+    notification = Notification.objects.create(
+        recipient=recipient, notification_type=notification_type,
+        title=title, message=message, link=link,
+    )
+    if recipient.email:
+        try:
+            send_mail(
+                subject=title, message=message,
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[recipient.email], fail_silently=True,
+            )
+        except Exception:
+            logger.exception('Failed to send email to %s', recipient.email)
+    return notification
+
+def create_bulk_notifications(*, recipients, notification_type, title, message, link=''):
+    """Create notifications for multiple recipients with batch email."""
+    notifications = []
+    email_messages = []
+    for recipient in recipients:
+        notification = Notification.objects.create(
+            recipient=recipient, notification_type=notification_type,
+            title=title, message=message, link=link,
+        )
+        notifications.append(notification)
+        if recipient.email:
+            email_messages.append(
+                (title, message, settings.DEFAULT_FROM_EMAIL, [recipient.email])
+            )
+    if email_messages:
+        try:
+            send_mass_mail(email_messages, fail_silently=True)
+        except Exception:
+            logger.exception('Failed to send bulk emails for: %s', title)
+    return notifications
 ```
 
-### Step 6.3: NotificationViewSet
+**Key design decision:** Using explicit utility functions instead of Django signals because:
+- The notification logic is visible at the call site (easier to debug)
+- You can pass contextual information (specific message text)
+- Follows Python's "explicit is better than implicit"
 
-- List user's notifications
+### Step 6.3: All nine notification event points
+
+| Event | Where called | Function | Recipient |
+|-------|-------------|----------|-----------|
+| Student enrols | `api.py` enroll action | `create_notification` | Teacher |
+| Student unenrols | `api.py` unenroll action | `create_notification` | Teacher |
+| Teacher blocks student | `api.py` block_student | `create_notification` | Student |
+| Teacher adds student | `api.py` add_student | `create_notification` | Student |
+| Teacher uploads material | `views.py` upload_material | `create_bulk_notifications` | All enrolled students |
+| Student submits feedback | `views.py` submit_feedback | `create_notification` | Teacher |
+| Student submits assignment | `api.py` perform_create | `create_notification` | Teacher |
+| Assignment deadline set | `api.py` perform_update | `create_bulk_notifications` | All enrolled students |
+| Course deleted | `views.py` course_delete | `create_bulk_notifications` | All enrolled students |
+
+### Step 6.4: Email configuration
+
+**`settings.py`:**
+```python
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')  # Google App Password
+DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'noreply@elearning.com')
+```
+
+### Step 6.5: NotificationViewSet
+
+- List user's notifications (filtered by `recipient=request.user`)
 - `mark_read` action — Mark single notification as read
 - `mark_all_read` action — Mark all as read
 
-### Step 6.4: Frontend with shared state
+### Step 6.6: Frontend with shared state
 
 - Navbar shows unread count badge
 - Notifications page lists all notifications
 - **Key pattern:** Use shared state (React Context) for `unreadCount` so marking all read in the Notifications page immediately updates the Navbar badge without a page refresh.
 
-**Concepts learned:** Creating related objects from other views, unread count badge, shared state across components via React Context
+### Step 6.7: Avoiding duplicate notifications
+
+**Bug to watch for:** In the `enroll` action, after `get_or_create`, don't use `if created or enrollment.is_active:` — this always evaluates true for already-enrolled students. Instead, track reactivation separately:
+```python
+enrollment, created = Enrollment.objects.get_or_create(...)
+reactivated = False
+if not created and not enrollment.is_active:
+    enrollment.is_active = True
+    enrollment.save()
+    reactivated = True
+if created or reactivated:
+    create_notification(...)  # Only notify on new or re-activated enrollment
+```
+
+**Concepts learned:** Django send_mail, send_mass_mail, SMTP configuration, App Passwords, centralised utility functions, fail_silently for resilience, logging for error tracking, notification event patterns, duplicate notification prevention
 
 ---
 
-## Phase 7: Invitation System + Email
+## Phase 7: Invitation System
 
 **Goal:** Teachers invite users via email with a unique token link.
 
@@ -429,25 +595,7 @@ class Invitation(models.Model):
         super().save(*args, **kwargs)
 ```
 
-### Step 7.2: Email configuration
-
-**Development (Mailhog):**
-```python
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = 'mailhog'
-EMAIL_PORT = 1025
-```
-
-**Production (Gmail SMTP):**
-```python
-EMAIL_HOST = 'smtp.gmail.com'
-EMAIL_PORT = 587
-EMAIL_USE_TLS = True
-EMAIL_HOST_USER = 'your@gmail.com'
-EMAIL_HOST_PASSWORD = 'your-app-password'  # Google App Password, not regular password
-```
-
-### Step 7.3: Send invitation email
+### Step 7.2: Send invitation email
 
 ```python
 from django.core.mail import send_mail
@@ -460,25 +608,25 @@ send_mail(
 )
 ```
 
-### Step 7.4: Public invite endpoints (no auth required)
+### Step 7.3: Public invite endpoints (no auth required)
 
 - `GET /api/invite/<token>/` — Validate token, return invitation data
 - `POST /api/invite/<token>/accept/` — Create user account from invitation
 
-### Step 7.5: Bulk CSV upload
+### Step 7.4: Bulk CSV upload
 
 - Teacher uploads CSV with columns: full_name, email, user_type, etc.
 - Backend parses CSV, validates each row, creates Invitation + sends email
-- Returns success/error report
+- Returns success/error report per row
 
-### Step 7.6: Frontend pages
+### Step 7.5: Frontend pages
 
 - `InvitationList.tsx` — Table of sent invitations with Resend/Delete buttons
 - `InviteSingle.tsx` — Form to invite one user
 - `InviteBulk.tsx` — CSV drag-and-drop upload with downloadable template
 - `AcceptInvitation.tsx` — Public page where invited user creates their account
 
-**Concepts learned:** Token generation (secrets module), Django send_mail, SMTP configuration, App Passwords, CSV parsing, public vs authenticated endpoints, Mailhog for dev email testing
+**Concepts learned:** Token generation (secrets module), Django send_mail, SMTP configuration, App Passwords, CSV parsing, public vs authenticated endpoints, custom permission classes (IsTeacher)
 
 ---
 
@@ -546,7 +694,7 @@ def generate(self, request):
     # 2. Extract text from PDF (truncate to ~12000 chars)
     # 3. Build prompt asking for quiz or flashcard JSON
     # 4. Call OpenAI API
-    # 5. Parse JSON response
+    # 5. Parse JSON response (handle markdown code blocks)
     # 6. Save Assignment with content JSON
     # 7. Send deadline notifications if deadline set
 ```
@@ -561,17 +709,42 @@ def generate(self, request):
 {"cards": [{"front": "term", "back": "definition"}]}
 ```
 
-### Step 8.5: Auto-scoring quiz submissions
+### Step 8.5: Auto-scoring quiz submissions with scoped access
 
 ```python
-def perform_create(self, serializer):
-    submission = serializer.save(student=self.request.user)
-    questions = submission.assignment.content.get('questions', [])
-    answers = submission.answers
-    correct = sum(1 for i, q in enumerate(questions) if i < len(answers) and answers[i] == q.get('correct'))
-    submission.score = int((correct / len(questions)) * 100)
-    submission.save()
+class AssignmentSubmissionViewSet(viewsets.ModelViewSet):
+    def get_queryset(self):
+        qs = AssignmentSubmission.objects.select_related('assignment', 'student')
+        if self.request.user.is_student():
+            qs = qs.filter(student=self.request.user)
+        elif self.request.user.is_teacher():
+            qs = qs.filter(assignment__course__teacher=self.request.user)
+        return qs
+
+    def perform_create(self, serializer):
+        # Verify student is enrolled in the course
+        assignment = serializer.validated_data.get('assignment')
+        if assignment and not Enrollment.objects.filter(
+            student=self.request.user, course=assignment.course, is_active=True
+        ).exists():
+            raise PermissionDenied('You must be enrolled in this course to submit.')
+        submission = serializer.save(student=self.request.user)
+        questions = submission.assignment.content.get('questions', [])
+        answers = submission.answers
+        correct = sum(1 for i, q in enumerate(questions)
+                      if i < len(answers) and answers[i] == q.get('correct'))
+        submission.score = int((correct / len(questions)) * 100)
+        submission.save()
+        # Notify teacher
+        create_notification(
+            recipient=submission.assignment.course.teacher,
+            notification_type='general',
+            title=f'New submission for {submission.assignment.title}',
+            message=f'{self.request.user.username} submitted...',
+        )
 ```
+
+**Important:** Teachers should only see submissions for their own courses (`assignment__course__teacher=request.user`), not all submissions in the system.
 
 ### Step 8.6: Frontend AssignmentView
 
@@ -580,13 +753,13 @@ def perform_create(self, serializer):
 - Teacher can edit questions/cards inline
 - Teacher sees all student submissions in a table
 
-**Concepts learned:** JSONField, OpenAI API, PDF text extraction, prompt engineering, JSON parsing, auto-scoring logic, CSS flip animation, per-user API keys
+**Concepts learned:** JSONField, OpenAI API, PDF text extraction, prompt engineering, JSON parsing, auto-scoring logic, CSS flip animation, per-user API keys, queryset scoping for multi-tenancy
 
 ---
 
 ## Phase 9: Real-time Chat (WebSocket)
 
-**Goal:** Live chat in classroom rooms using WebSocket.
+**Goal:** Live chat in classroom rooms using WebSocket with access control.
 
 ### Step 9.1: Install Channels + Redis
 
@@ -619,11 +792,10 @@ CHANNEL_LAYERS = {
 **`asgi.py`:**
 ```python
 from channels.routing import ProtocolTypeRouter, URLRouter
-from channels.auth import AuthMiddlewareStack
 
 application = ProtocolTypeRouter({
     "http": get_asgi_application(),
-    "websocket": AuthMiddlewareStack(URLRouter(websocket_urlpatterns)),
+    "websocket": TokenAuthMiddleware(URLRouter(websocket_urlpatterns)),
 })
 ```
 
@@ -639,71 +811,117 @@ Daphne is an ASGI server that handles both HTTP and WebSocket connections (unlik
 ### Step 9.4: Chat models
 
 ```python
-class ChatRoom(models.Model):
+class Classroom(models.Model):
     name = models.CharField(max_length=100)
     participants = models.ManyToManyField(User)
+    whiteboard_data = models.TextField(default='[]')
 
-class ChatMessage(models.Model):
-    room = models.ForeignKey(ChatRoom, on_delete=models.CASCADE)
+class ClassroomMessage(models.Model):
+    room = models.ForeignKey(Classroom, on_delete=models.CASCADE)
     sender = models.ForeignKey(User, on_delete=models.CASCADE)
     content = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
 ```
 
-### Step 9.5: WebSocket Consumer
+### Step 9.5: Chat API with access control
 
-**`chat/consumers.py`:**
 ```python
-from channels.generic.websocket import AsyncJsonWebsocketConsumer
+class ClassroomViewSet(viewsets.ModelViewSet):
+    def get_queryset(self):
+        # Users only see rooms they participate in
+        return Classroom.objects.filter(participants=self.request.user)
 
-class ChatConsumer(AsyncJsonWebsocketConsumer):
-    async def connect(self):
-        self.room_id = self.scope['url_route']['kwargs']['room_id']
-        self.group_name = f'chat_{self.room_id}'
-        await self.channel_layer.group_add(self.group_name, self.channel_name)
-        await self.accept()
+    @action(detail=True, methods=['get'])
+    def messages(self, request, pk=None):
+        room = self.get_object()
+        if request.user not in room.participants.all():
+            return Response({'error': 'Not a participant'}, status=403)
+        messages = room.messages.select_related('sender').order_by('-created_at')[:100]
+        return Response(ClassroomMessageSerializer(reversed(list(messages)), many=True).data)
 
-    async def disconnect(self, code):
-        await self.channel_layer.group_discard(self.group_name, self.channel_name)
-
-    async def receive_json(self, content):
-        # Save message to DB, then broadcast
-        await self.channel_layer.group_send(self.group_name, {
-            'type': 'chat_message',
-            'message': content['message'],
-            'username': self.scope['user'].username,
-        })
-
-    async def chat_message(self, event):
-        await self.send_json(event)
+    @action(detail=True, methods=['post'])
+    def send(self, request, pk=None):
+        room = self.get_object()
+        if request.user not in room.participants.all():
+            return Response({'error': 'Not a participant'}, status=403)
+        content = request.data.get('content', '').strip()
+        if len(content) > 5000:
+            return Response({'detail': 'Message too long'}, status=400)
+        msg = ClassroomMessage.objects.create(room=room, sender=request.user, content=content)
+        return Response(ClassroomMessageSerializer(msg).data, status=201)
 ```
 
-### Step 9.6: WebSocket routing
+**Important access control points:**
+- `get_queryset` filters rooms to participant-only visibility
+- `messages` and `send` verify participation before allowing access
+- `select_related('sender')` prevents N+1 queries when loading messages
+- Message length capped at 5000 characters
 
-**`chat/routing.py`:**
+### Step 9.6: WebSocket Consumer with access control
+
+**`classroom/consumers.py`:**
+```python
+class ClassroomConsumer(AsyncWebsocketConsumer):
+    async def connect(self):
+        self.room_name = self.scope['url_route']['kwargs']['room_name']
+        self.user = self.scope['user']
+
+        if not self.user.is_authenticated:
+            await self.close()
+            return
+
+        # Verify room exists and user is a participant
+        if not await self.is_participant(self.user.id, self.room_name):
+            await self.close()
+            return
+
+        await self.channel_layer.group_add(f'classroom_{self.room_name}', self.channel_name)
+        await self.accept()
+
+    async def receive(self, text_data):
+        data = json.loads(text_data)
+        if data.get('type') == 'chat':
+            message = data.get('message', '')
+            if message.strip() and len(message) <= 5000:
+                await self.save_message(self.user.id, self.room_name, message)
+                await self.channel_layer.group_send(...)
+
+    @database_sync_to_async
+    def is_participant(self, user_id, room_name):
+        room = Classroom.objects.filter(name=room_name).first()
+        if not room:
+            return False
+        return room.participants.filter(id=user_id).exists()
+```
+
+**Critical:** Always verify participation on WebSocket connect. Without this, any authenticated user could access any chat room by guessing the room name.
+
+### Step 9.7: WebSocket routing
+
+**`classroom/routing.py`:**
 ```python
 websocket_urlpatterns = [
-    path('ws/chat/<int:room_id>/', ChatConsumer.as_asgi()),
+    path('ws/classroom/<str:room_name>/', ClassroomConsumer.as_asgi()),
 ]
 ```
 
-### Step 9.7: Token-based WebSocket auth
+### Step 9.8: Token-based WebSocket auth
 
 WebSocket doesn't support HTTP headers, so pass token as query parameter:
 ```
-ws://localhost:8080/ws/chat/1/?token=abc123
+ws://localhost:8080/ws/classroom/room1/?token=abc123
 ```
 
 Create custom middleware to extract token and set `scope['user']`.
 
-### Step 9.8: Frontend WebSocket
+### Step 9.9: Frontend WebSocket
 
 ```typescript
-const ws = new WebSocket(`ws://localhost:8080/ws/chat/${roomId}/?token=${token}`);
+const ws = new WebSocket(`ws://localhost:8080/ws/classroom/${roomName}/?token=${token}`);
 
 ws.onmessage = (event) => {
   const data = JSON.parse(event.data);
-  setChatMessages(prev => [...prev, data]);
+  setClassroomMessages(prev => [...prev, data]);
 };
 
 const sendMessage = (text: string) => {
@@ -711,7 +929,7 @@ const sendMessage = (text: string) => {
 };
 ```
 
-**Concepts learned:** ASGI vs WSGI, Daphne server, Django Channels, Redis channel layer, WebSocket Consumer, group_send/group_add, WebSocket routing, token auth for WebSocket, frontend WebSocket API
+**Concepts learned:** ASGI vs WSGI, Daphne server, Django Channels, Redis channel layer, WebSocket Consumer, group_send/group_add, WebSocket routing, token auth for WebSocket, participant-based access control, select_related for N+1 prevention, message length validation, frontend WebSocket API
 
 ---
 
@@ -752,22 +970,34 @@ Implement tool modes: pen (freehand), line, text, eraser, move
 When teacher draws, send normalized coordinates:
 ```json
 {
-  "type": "whiteboard",
-  "action": "draw",
-  "tool": "pen",
+  "type": "draw",
   "points": [[0.1, 0.2], [0.15, 0.25]],
   "color": "#ff0000",
-  "lineWidth": 3
+  "width": 3
 }
 ```
 
 Use normalized coordinates (0-1 range) so different screen sizes render correctly.
 
-### Step 10.5: Persist whiteboard state
+### Step 10.5: Persist whiteboard state with size limit
 
-Store whiteboard objects in `ChatRoom.whiteboard_data` (JSON field) so late joiners can see existing drawings.
+Store whiteboard objects in `Classroom.whiteboard_data` (JSON field) so late joiners can see existing drawings. **Cap at 500 actions** to prevent unbounded growth:
 
-**Concepts learned:** HTML Canvas API, mouse events, coordinate normalization, real-time drawing sync, tool state management
+```python
+MAX_WHITEBOARD_ACTIONS = 500
+
+@database_sync_to_async
+def append_whiteboard_action(self, room_name, action):
+    room = find_room(room_name)
+    actions = json.loads(room.whiteboard_data) if room.whiteboard_data else []
+    if len(actions) >= self.MAX_WHITEBOARD_ACTIONS:
+        actions = actions[-(self.MAX_WHITEBOARD_ACTIONS - 1):]  # Drop oldest
+    actions.append(action)
+    room.whiteboard_data = json.dumps(actions)
+    room.save(update_fields=['whiteboard_data'])
+```
+
+**Concepts learned:** HTML Canvas API, mouse events, coordinate normalization, real-time drawing sync, tool state management, data size limits to prevent unbounded growth
 
 ---
 
@@ -873,23 +1103,265 @@ Simple CRUD — users can only see/edit their own status updates.
 
 ---
 
+## Phase 14: Testing
+
+**Goal:** Comprehensive back-end test suite covering models, APIs, permissions, and edge cases.
+
+### Step 14.1: Test structure
+
+Each app has a `tests.py` with test classes inheriting from `TestCase` or `APITestCase`:
+
+```python
+from django.test import TestCase
+from rest_framework.test import APITestCase
+from rest_framework.authtoken.models import Token
+
+class CourseAPITest(APITestCase):
+    def setUp(self):
+        self.teacher = User.objects.create_user(username='t1', password='p', user_type='teacher')
+        self.student = User.objects.create_user(username='s1', password='p', user_type='student')
+        self.token = Token.objects.create(user=self.teacher)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {self.token.key}')
+```
+
+### Step 14.2: What to test
+
+- **Model tests:** String representations, default values, model methods, unique constraints
+- **API positive paths:** Create, list, retrieve, update, delete with correct permissions
+- **API negative paths:** Permission denied (403), invalid data (400), not found (404)
+- **Permission tests:** Every restricted action tested with both authorized and unauthorized users
+- **Edge cases:** Re-enrollment after blocking, expired tokens, duplicate submissions, CSV with invalid data
+- **Email tests:** Use `unittest.mock.patch` to mock `send_mail` and verify it's called correctly
+
+### Step 14.3: Mock testing for email
+
+```python
+from unittest.mock import patch
+
+@patch('notifications.utils.send_mail')
+def test_creates_notification_and_sends_email(self, mock_send):
+    create_notification(recipient=self.user, ...)
+    self.assertEqual(Notification.objects.count(), 1)
+    mock_send.assert_called_once()
+
+@patch('notifications.utils.send_mail', side_effect=Exception('SMTP down'))
+def test_email_failure_does_not_crash(self, mock_send):
+    n = create_notification(recipient=self.user, ...)
+    self.assertIsNotNone(n)  # Notification still created despite email failure
+```
+
+### Step 14.4: Running tests
+
+```bash
+docker compose exec backend python manage.py test              # All 132 tests
+docker compose exec backend python manage.py test accounts     # 79 tests
+docker compose exec backend python manage.py test courses      # 31 tests
+docker compose exec backend python manage.py test classroom         # 9 tests
+docker compose exec backend python manage.py test notifications # 13 tests
+```
+
+**Concepts learned:** Django TestCase, DRF APITestCase, setUp for test isolation, Token authentication in tests, unittest.mock.patch, testing email without SMTP, permission testing patterns, edge case coverage
+
+---
+
+## Phase 15: API Documentation (Swagger / OpenAPI)
+
+**Goal:** Auto-generate interactive API documentation from existing ViewSets and serializers.
+
+### Step 15.1: Install drf-spectacular
+
+```bash
+pip install drf-spectacular
+```
+
+Add to `requirements.txt`:
+```
+drf-spectacular==0.28.0
+```
+
+### Step 15.2: Configure settings
+
+**`settings.py`:**
+```python
+INSTALLED_APPS = [
+    ...
+    'drf_spectacular',
+]
+
+REST_FRAMEWORK = {
+    ...
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+}
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'eLearning Platform API',
+    'DESCRIPTION': 'API for the eLearning platform with courses, classrooms, assignments, and notifications.',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+}
+```
+
+### Step 15.3: Add URL patterns
+
+**`urls.py`:**
+```python
+from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
+
+urlpatterns = [
+    ...
+    path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
+    path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
+    path('api/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
+]
+```
+
+### Step 15.4: Verify
+
+Visit:
+- `http://localhost:8080/api/docs/` — Swagger UI (interactive, can test endpoints)
+- `http://localhost:8080/api/redoc/` — ReDoc (clean reading layout)
+- `http://localhost:8080/api/schema/` — Raw OpenAPI 3.0 JSON schema
+
+The documentation is generated automatically from ViewSet definitions, serializer fields, and URL routing. No manual documentation is required — when you add or modify a ViewSet, the docs update automatically.
+
+**Concepts learned:** OpenAPI 3.0, Swagger UI, automatic schema generation, API documentation best practices
+
+---
+
+## Architecture: Model → Serializer → ViewSet
+
+This section explains the three-layer architecture pattern used throughout the Django back-end, why it exists, and how the layers interact.
+
+### Why Three Layers?
+
+Django REST Framework applications separate concerns into three layers:
+
+```
+HTTP Request → ViewSet → Serializer → Model → Database
+HTTP Response ← ViewSet ← Serializer ← Model ← Database
+```
+
+Each layer has a single responsibility. This separation makes the code easier to test, maintain, and extend.
+
+### Layer 1: Model — What Data Exists
+
+Models define database tables, fields, relationships, and constraints. They are the single source of truth for data structure.
+
+```python
+class Course(models.Model):
+    title = models.CharField(max_length=200)
+    teacher = models.ForeignKey(User, on_delete=models.CASCADE)
+    code = models.CharField(max_length=20, unique=True)
+```
+
+**Models do NOT know about:** HTTP requests, JSON, authentication, or who is asking for data.
+
+**Why?** The same model is used by the REST API, Django Admin, management commands, WebSocket consumers, and tests. If models depended on HTTP requests, none of these other contexts would work.
+
+### Layer 2: Serializer — What Data is Exposed
+
+Serializers control the translation between Python objects and JSON. They handle:
+
+1. **Output shaping** — Deciding which fields to include in the API response
+2. **Computed fields** — Adding derived data that isn't stored in the database
+3. **Input validation** — Checking incoming data before it reaches the model
+
+```python
+class CourseSerializer(serializers.ModelSerializer):
+    teacher_name = serializers.SerializerMethodField()
+    enrolled_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Course
+        fields = ['id', 'title', 'code', 'teacher', 'teacher_name', 'enrolled_count']
+
+    def get_teacher_name(self, obj):
+        return obj.teacher.get_full_name() or obj.teacher.username
+
+    def get_enrolled_count(self, obj):
+        return obj.enrollment_set.filter(is_active=True).count()
+```
+
+**Why not put computed fields in the model?** Fields like `enrolled_count` depend on the context. The admin might want different computed fields than the API. By keeping them in the serializer, each API consumer can have its own view of the data without polluting the model.
+
+**Why not validate in the model?** Models enforce database constraints (unique, not null). Serializers enforce API constraints (password confirmation, checking if an email is already invited, cross-field validation). Different contexts (API vs admin vs CLI) may have different validation needs.
+
+### Layer 3: ViewSet — Who Can Do What
+
+ViewSets handle authentication, permissions, business logic, and queryset scoping:
+
+```python
+class CourseViewSet(viewsets.ModelViewSet):
+    serializer_class = CourseSerializer
+
+    def get_queryset(self):
+        return Course.objects.select_related('teacher')
+
+    def perform_create(self, serializer):
+        if not self.request.user.is_teacher():
+            raise PermissionDenied('Only teachers can create courses.')
+        serializer.save(teacher=self.request.user)
+
+    def perform_update(self, serializer):
+        if serializer.instance.teacher != self.request.user:
+            raise PermissionDenied('You can only edit your own courses.')
+        serializer.save()
+```
+
+**Why not put permissions in the serializer?** Serializers validate data shape and content. They should not care about *who* is sending the data. The same serializer might be used in a management command where there is no HTTP request and no concept of "the current user."
+
+**Why not put business logic in the model?** `request.user` is an HTTP concept. Models should not depend on the request context. By keeping permission checks in the ViewSet, models remain portable and testable without mocking HTTP requests.
+
+### How They Work Together
+
+**Example: Creating a course (POST /api/courses/)**
+
+1. **ViewSet** receives the POST request, checks the user is authenticated
+2. **ViewSet.perform_create()** checks `request.user.is_teacher()`, raises 403 if not
+3. **Serializer** validates the incoming JSON (title required, code unique, etc.)
+4. **Serializer.save()** calls `Model.save()` with `teacher=request.user`
+5. **Model** writes the row to the database
+6. **Serializer** converts the saved model to JSON, computing `teacher_name` and `enrolled_count`
+7. **ViewSet** returns the JSON with status 201
+
+**Example: Listing feedback (GET /api/feedback/?course=1)**
+
+1. **ViewSet.get_queryset()** checks the user's role:
+   - Student → filter to enrolled courses only
+   - Teacher → filter to own courses only
+2. **ViewSet** applies query parameter filtering (`course=1`)
+3. **Serializer** converts each Feedback object to JSON with `student_name`
+4. **ViewSet** returns the JSON list with status 200
+
+### Testing Each Layer Independently
+
+- **Model tests** — verify data integrity, constraints, and model methods without any HTTP
+- **Serializer tests** — verify JSON shape, computed fields, and validation without any permissions
+- **ViewSet tests** — verify permissions, HTTP status codes, and business logic using DRF's `APITestCase`
+
+This separation is why the project has 132 tests that are each focused and fast.
+
+---
+
 ## Implementation Order Summary
 
 | Phase | Feature | New Concepts |
 |-------|---------|-------------|
-| 1 | Docker + project setup | Docker, Compose, Vite, Django |
+| 1 | Docker + project setup | Docker, Compose, volumes, .dockerignore, Vite, Django |
 | 2 | Authentication | Custom User, Token auth, Context, Protected routes |
-| 3 | Course CRUD + enrollment | Models, ViewSets, Router, ForeignKey |
+| 3 | Course CRUD + enrollment | Models, ViewSets, Router, ForeignKey, ownership checks |
 | 4 | File uploads | FileField, MediaRoot, MultiPartParser, FormData |
-| 5 | Feedback & ratings | Query filtering, unique_together, optimistic updates |
-| 6 | Notifications | Cross-model creation, shared Context state, badges |
-| 7 | Invitations + email | Token generation, SMTP, CSV parsing, public endpoints |
-| 8 | AI assignments | OpenAI API, JSONField, PDF extraction, auto-scoring |
-| 9 | WebSocket chat | ASGI, Channels, Redis, Consumer, WS auth |
-| 10 | Whiteboard | Canvas API, mouse events, coordinate normalization |
+| 5 | Feedback & ratings | Query filtering, unique_together, select_related |
+| 6 | Notifications + email | send_mail, send_mass_mail, SMTP, utility functions, duplicate prevention |
+| 7 | Invitations | Token generation, CSV parsing, public endpoints |
+| 8 | AI assignments | OpenAI API, JSONField, PDF extraction, auto-scoring, queryset scoping |
+| 9 | WebSocket chat | ASGI, Channels, Redis, Consumer, WS auth, access control |
+| 10 | Whiteboard | Canvas API, mouse events, coordinate normalization, size limits |
 | 11 | Audio streaming | Web Audio API, PCM, base64, getUserMedia |
 | 12 | Profile photos | ImageField, Pillow, serializer context, absolute URLs |
 | 13 | Status feed | Simple CRUD, related_name, social features |
+| 14 | Testing | TestCase, APITestCase, mock.patch, permission testing |
+| 15 | API documentation | drf-spectacular, OpenAPI 3.0, Swagger UI, ReDoc |
 
 ---
 
@@ -922,17 +1394,59 @@ When you need dynamic filtering, override `get_queryset()` instead of setting cl
 router.register(r'feedback', FeedbackViewSet, basename='feedback')
 ```
 
-### 4. Docker Container Updates
+### 4. Object-Level Permissions
+Always check ownership in `perform_update` and `perform_destroy`:
+```python
+def perform_update(self, serializer):
+    if serializer.instance.teacher != self.request.user:
+        raise PermissionDenied('You can only edit your own courses.')
+    serializer.save()
+```
+
+### 5. Docker Container Updates
 - **Code changes (volume-mounted):** Backend auto-reloads; or `docker restart <container>`
 - **Environment variable changes (.env):** Must `docker compose up -d --force-recreate <service>`
 - **Dependency changes (requirements.txt/package.json):** Must `docker compose up --build`
 
-### 5. WebSocket + REST Fallback
+### 6. WebSocket + REST Fallback
 Always implement a REST API fallback for WebSocket features, so the app still works if WebSocket connection fails:
 ```typescript
 if (ws?.readyState === WebSocket.OPEN) {
   ws.send(JSON.stringify({ type: 'chat', message: text }));
 } else {
-  await client.post(`/chatrooms/${roomId}/send/`, { content: text });
+  await client.post(`/classrooms/${roomId}/send/`, { content: text });
 }
+```
+
+### 7. Permission Checks at Every Layer
+Always enforce permissions server-side, never rely on the frontend hiding buttons:
+```python
+# In perform_create — check role AND ownership
+def perform_create(self, serializer):
+    if not self.request.user.is_teacher():
+        raise PermissionDenied('Only teachers can create assignments.')
+    course = serializer.validated_data.get('course')
+    if course and course.teacher != self.request.user:
+        raise PermissionDenied('You can only create assignments for your own courses.')
+    serializer.save(created_by=self.request.user)
+
+# In get_queryset — scope data to prevent leakage
+def get_queryset(self):
+    if self.request.user.is_student():
+        enrolled = Enrollment.objects.filter(student=self.request.user, is_active=True)
+        return Assignment.objects.filter(course__in=enrolled.values('course'))
+    elif self.request.user.is_teacher():
+        return Assignment.objects.filter(course__teacher=self.request.user)
+```
+
+A student bypassing the frontend and making a direct API request (e.g. via curl or Postman) should still be denied. This is why `perform_create` checks the user's role even though the frontend only shows the "Create" button to teachers.
+
+### 8. Prevent N+1 Queries
+Always use `select_related` when you'll access ForeignKey fields:
+```python
+# Good — 1 query with JOIN
+messages = room.messages.select_related('sender').order_by('-created_at')[:100]
+
+# Bad — 1 query for messages + 1 query per message to get sender
+messages = room.messages.order_by('-created_at')[:100]
 ```

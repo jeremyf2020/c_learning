@@ -16,8 +16,8 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'elearning_project.settings')
 
 django_asgi_app = get_asgi_application()
 
-from chat.routing import websocket_urlpatterns
-from chat.middleware import TokenAuthMiddleware
+from classroom.routing import websocket_urlpatterns
+from classroom.middleware import TokenAuthMiddleware
 
 application = ProtocolTypeRouter({
     "http": django_asgi_app,

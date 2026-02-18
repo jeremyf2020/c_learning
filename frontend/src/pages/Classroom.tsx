@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import client from '../api/client';
 import { useAuth } from '../context/AuthContext';
-import type { ChatRoom, WhiteboardTool, WhiteboardAction } from '../types';
+import type { ClassroomRoom, WhiteboardTool, WhiteboardAction } from '../types';
 
 interface LiveChatMsg {
   id: number;
@@ -15,7 +15,7 @@ export default function Classroom() {
   const isTeacher = user?.user_type === 'teacher';
 
   // Room state
-  const [rooms, setRooms] = useState<ChatRoom[]>([]);
+  const [rooms, setRooms] = useState<ClassroomRoom[]>([]);
   const [selectedRoomId, setSelectedRoomId] = useState<number | null>(null);
   const [newRoomName, setNewRoomName] = useState('');
   const [loading, setLoading] = useState(true);
@@ -64,7 +64,7 @@ export default function Classroom() {
 
   // Load rooms
   useEffect(() => {
-    client.get('/chatrooms/').then(res => {
+    client.get('/classrooms/').then(res => {
       setRooms(res.data);
       if (res.data.length > 0) setSelectedRoomId(res.data[0].id);
       setLoading(false);
@@ -143,7 +143,7 @@ export default function Classroom() {
     }
 
     // Load messages via REST
-    client.get(`/chatrooms/${selectedRoom.id}/messages/`).then(res => {
+    client.get(`/classrooms/${selectedRoom.id}/messages/`).then(res => {
       setChatMessages(res.data.map((m: any) => ({
         id: m.id,
         username: m.sender_name,
@@ -157,7 +157,7 @@ export default function Classroom() {
     const wsHost = import.meta.env.VITE_API_URL?.replace(/^https?:\/\//, '').replace('/api', '') || 'localhost:8080';
     const roomName = selectedRoom.name.replace(/[^a-zA-Z0-9]/g, '_');
     const token = localStorage.getItem('auth_token') || '';
-    const wsUrl = `${wsProtocol}//${wsHost}/ws/chat/${roomName}/?token=${token}`;
+    const wsUrl = `${wsProtocol}//${wsHost}/ws/classroom/${roomName}/?token=${token}`;
 
     let cancelled = false;
     let reconnectTimer: ReturnType<typeof setTimeout>;
@@ -609,7 +609,7 @@ export default function Classroom() {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: 'chat', message: newMessage }));
     } else {
-      client.post(`/chatrooms/${selectedRoom.id}/send/`, { content: newMessage }).then(res => {
+      client.post(`/classrooms/${selectedRoom.id}/send/`, { content: newMessage }).then(res => {
         setChatMessages(prev => [...prev, {
           id: res.data.id,
           username: res.data.sender_name,
@@ -625,7 +625,7 @@ export default function Classroom() {
     e.preventDefault();
     if (!newRoomName.trim()) return;
     try {
-      const res = await client.post('/chatrooms/', { name: newRoomName, participants: [user?.id] });
+      const res = await client.post('/classrooms/', { name: newRoomName, participants: [user?.id] });
       setRooms(prev => [res.data, ...prev]);
       setSelectedRoomId(res.data.id);
       setNewRoomName('');

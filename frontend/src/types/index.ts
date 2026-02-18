@@ -96,7 +96,7 @@ export interface InvitationPublic {
   status: string;
 }
 
-export interface ChatRoom {
+export interface ClassroomRoom {
   id: number;
   name: string;
   participants: number[];
@@ -106,7 +106,7 @@ export interface ChatRoom {
   updated_at: string;
 }
 
-export interface ChatMessage {
+export interface ClassroomMessage {
   id: number;
   room: number;
   sender: number;

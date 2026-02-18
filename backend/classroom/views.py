@@ -1,21 +1,21 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-from .models import ChatRoom, ChatMessage
+from .models import Classroom, ClassroomMessage
 from accounts.models import User
 
 
 @login_required
-def chat_room_list(request):
-    """List all chat rooms for the user"""
-    chat_rooms = request.user.chat_rooms.all()
-    return render(request, 'chat/room_list.html', {'chat_rooms': chat_rooms})
+def classroom_list(request):
+    """List all classroom rooms for the user"""
+    classrooms = request.user.classrooms.all()
+    return render(request, 'chat/room_list.html', {'chat_rooms': classrooms})
 
 
 @login_required
-def chat_room(request, room_name):
-    """Chat room view"""
-    room, created = ChatRoom.objects.get_or_create(name=room_name)
+def classroom_detail(request, room_name):
+    """Classroom room view"""
+    room, created = Classroom.objects.get_or_create(name=room_name)
 
     if request.user not in room.participants.all():
         room.participants.add(request.user)
@@ -32,19 +32,19 @@ def chat_room(request, room_name):
 
 
 @login_required
-def create_chat_room(request):
-    """Create a new chat room"""
+def create_classroom(request):
+    """Create a new classroom room"""
     if request.method == 'POST':
         room_name = request.POST.get('room_name', '').strip()
         participant_ids = request.POST.getlist('participants')
 
         if not room_name:
             messages.error(request, 'Room name is required.')
-            return redirect('chat:create_room')
+            return redirect('classroom:create_room')
 
         room_name = room_name.replace(' ', '_').lower()
 
-        room, created = ChatRoom.objects.get_or_create(name=room_name)
+        room, created = Classroom.objects.get_or_create(name=room_name)
 
         room.participants.add(request.user)
 
@@ -55,8 +55,8 @@ def create_chat_room(request):
             except User.DoesNotExist:
                 pass
 
-        messages.success(request, f'Chat room "{room_name}" created!')
-        return redirect('chat:room', room_name=room_name)
+        messages.success(request, f'Classroom "{room_name}" created!')
+        return redirect('classroom:room', room_name=room_name)
 
     users = User.objects.exclude(id=request.user.id).filter(is_blocked=False)
     return render(request, 'chat/create_room.html', {'users': users})

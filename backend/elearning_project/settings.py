@@ -44,9 +44,11 @@ INSTALLED_APPS = [
     'rest_framework.authtoken',
     'corsheaders',
     'channels',
+    'django_extensions',
+    'drf_spectacular',
     'accounts',
     'courses',
-    'chat',
+    'classroom',
     'notifications',
 ]
 
@@ -160,6 +162,14 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticatedOrReadOnly',
     ],
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+}
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'eLearning Platform API',
+    'DESCRIPTION': 'API for the eLearning platform with courses, classrooms, assignments, and notifications.',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
 }
 
 # Channels configuration

@@ -1,22 +1,22 @@
 from rest_framework import serializers
-from .models import ChatRoom, ChatMessage
+from .models import Classroom, ClassroomMessage
 
 
-class ChatMessageSerializer(serializers.ModelSerializer):
+class ClassroomMessageSerializer(serializers.ModelSerializer):
     sender_name = serializers.CharField(source='sender.username', read_only=True)
 
     class Meta:
-        model = ChatMessage
+        model = ClassroomMessage
         fields = ['id', 'room', 'sender', 'sender_name', 'content', 'created_at']
         read_only_fields = ['id', 'sender', 'created_at']
 
 
-class ChatRoomSerializer(serializers.ModelSerializer):
+class ClassroomSerializer(serializers.ModelSerializer):
     participant_names = serializers.SerializerMethodField()
     last_message = serializers.SerializerMethodField()
 
     class Meta:
-        model = ChatRoom
+        model = Classroom
         fields = ['id', 'name', 'participants', 'participant_names', 'last_message', 'created_at', 'updated_at']
         read_only_fields = ['id', 'created_at', 'updated_at']
         extra_kwargs = {

@@ -26,6 +26,9 @@ class CourseViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
 
     def perform_create(self, serializer):
+        from rest_framework.exceptions import PermissionDenied
+        if not self.request.user.is_teacher():
+            raise PermissionDenied('Only teachers can create courses.')
         serializer.save(teacher=self.request.user)
 
     def perform_update(self, serializer):
@@ -199,13 +202,29 @@ class FeedbackViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        qs = Feedback.objects.select_related('student')
+        qs = Feedback.objects.select_related('student', 'course')
         course_id = self.request.query_params.get('course')
         if course_id:
             qs = qs.filter(course_id=course_id)
+        # Scope: students see feedback for courses they're enrolled in, teachers for their courses
+        if self.request.user.is_student():
+            enrolled_courses = Enrollment.objects.filter(
+                student=self.request.user, is_active=True
+            ).values_list('course_id', flat=True)
+            qs = qs.filter(course_id__in=enrolled_courses)
+        elif self.request.user.is_teacher():
+            qs = qs.filter(course__teacher=self.request.user)
         return qs
 
     def perform_create(self, serializer):
+        from rest_framework.exceptions import PermissionDenied
+        if not self.request.user.is_student():
+            raise PermissionDenied('Only students can submit feedback.')
+        course = serializer.validated_data.get('course')
+        if course and not Enrollment.objects.filter(
+            student=self.request.user, course=course, is_active=True
+        ).exists():
+            raise PermissionDenied('You must be enrolled in this course to leave feedback.')
         serializer.save(student=self.request.user)
 
     def perform_update(self, serializer):
@@ -272,9 +291,23 @@ class AssignmentViewSet(viewsets.ModelViewSet):
         course_id = self.request.query_params.get('course')
         if course_id:
             qs = qs.filter(course_id=course_id)
+        # Scope: students see assignments for enrolled courses, teachers for their courses
+        if self.request.user.is_student():
+            enrolled_courses = Enrollment.objects.filter(
+                student=self.request.user, is_active=True
+            ).values_list('course_id', flat=True)
+            qs = qs.filter(course_id__in=enrolled_courses)
+        elif self.request.user.is_teacher():
+            qs = qs.filter(course__teacher=self.request.user)
         return qs
 
     def perform_create(self, serializer):
+        from rest_framework.exceptions import PermissionDenied
+        if not self.request.user.is_teacher():
+            raise PermissionDenied('Only teachers can create assignments.')
+        course = serializer.validated_data.get('course')
+        if course and course.teacher != self.request.user:
+            raise PermissionDenied('You can only create assignments for your own courses.')
         serializer.save(created_by=self.request.user)
 
     def _notify_deadline(self, assignment):
@@ -441,6 +474,12 @@ class AssignmentSubmissionViewSet(viewsets.ModelViewSet):
         return qs
 
     def perform_create(self, serializer):
+        from rest_framework.exceptions import PermissionDenied
+        assignment = serializer.validated_data.get('assignment')
+        if assignment and not Enrollment.objects.filter(
+            student=self.request.user, course=assignment.course, is_active=True
+        ).exists():
+            raise PermissionDenied('You must be enrolled in this course to submit.')
         submission = serializer.save(student=self.request.user)
         # Auto-score quizzes
         assignment = submission.assignment

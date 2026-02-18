@@ -180,13 +180,14 @@ class AuthAPITest(APITestCase):
         self.assertEqual(res.data['user']['username'], 'newuser')
 
     def test_register_creates_user(self):
+        """Open registration forces student role regardless of user_type sent"""
         self.client.post('/api/auth/register/', {
             'username': 'newuser', 'email': 'new@test.com',
             'full_name': 'New User', 'user_type': 'teacher',
             'password': 'StrongPass123!', 'password_confirm': 'StrongPass123!',
         })
         user = User.objects.get(username='newuser')
-        self.assertEqual(user.user_type, 'teacher')
+        self.assertEqual(user.user_type, 'student')
         self.assertTrue(user.check_password('StrongPass123!'))
 
     def test_register_duplicate_username(self):

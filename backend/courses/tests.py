@@ -286,6 +286,8 @@ class FeedbackAPITest(APITestCase):
         self.student_token = Token.objects.create(user=self.student)
 
     def test_create_feedback(self):
+        # Student must be enrolled to leave feedback
+        Enrollment.objects.create(student=self.student, course=self.course, is_active=True)
         self.client.credentials(HTTP_AUTHORIZATION=f'Token {self.student_token.key}')
         res = self.client.post('/api/feedback/', {
             'course': self.course.id, 'rating': 5, 'comment': 'Excellent!',
@@ -293,7 +295,16 @@ class FeedbackAPITest(APITestCase):
         self.assertEqual(res.status_code, 201)
         self.assertEqual(Feedback.objects.count(), 1)
 
+    def test_create_feedback_not_enrolled(self):
+        """Student cannot leave feedback if not enrolled"""
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {self.student_token.key}')
+        res = self.client.post('/api/feedback/', {
+            'course': self.course.id, 'rating': 5, 'comment': 'Excellent!',
+        })
+        self.assertEqual(res.status_code, 403)
+
     def test_list_feedback(self):
+        Enrollment.objects.create(student=self.student, course=self.course, is_active=True)
         Feedback.objects.create(
             course=self.course, student=self.student,
             rating=4, comment='Good',
@@ -301,3 +312,4 @@ class FeedbackAPITest(APITestCase):
         self.client.credentials(HTTP_AUTHORIZATION=f'Token {self.student_token.key}')
         res = self.client.get('/api/feedback/')
         self.assertEqual(res.status_code, 200)
+        self.assertEqual(len(res.data), 1)

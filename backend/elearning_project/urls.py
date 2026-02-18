@@ -3,13 +3,14 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 from rest_framework.routers import DefaultRouter
+from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
 from accounts.api import (
     UserViewSet, StatusUpdateViewSet, InvitationViewSet,
     validate_invite, accept_invite,
     auth_login, auth_register, auth_me,
 )
 from courses.api import CourseViewSet, CourseMaterialViewSet, EnrollmentViewSet, FeedbackViewSet, AssignmentViewSet, AssignmentSubmissionViewSet
-from chat.api import ChatRoomViewSet
+from classroom.api import ClassroomViewSet
 from notifications.api import NotificationViewSet
 
 router = DefaultRouter()
@@ -22,14 +23,14 @@ router.register(r'enrollments', EnrollmentViewSet)
 router.register(r'feedback', FeedbackViewSet, basename='feedback')
 router.register(r'assignments', AssignmentViewSet, basename='assignment')
 router.register(r'assignment-submissions', AssignmentSubmissionViewSet, basename='assignment-submission')
-router.register(r'chatrooms', ChatRoomViewSet, basename='chatroom')
+router.register(r'classrooms', ClassroomViewSet, basename='classroom')
 router.register(r'notifications', NotificationViewSet, basename='notification')
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('', include('accounts.urls')),
     path('courses/', include('courses.urls')),
-    path('chat/', include('chat.urls')),
+    path('classroom/', include('classroom.urls')),
     path('api/', include(router.urls)),
     path('api-auth/', include('rest_framework.urls')),
 
@@ -41,6 +42,11 @@ urlpatterns = [
     path('api/auth/login/', auth_login, name='auth_login'),
     path('api/auth/register/', auth_register, name='auth_register'),
     path('api/auth/me/', auth_me, name='auth_me'),
+
+    # OpenAPI / Swagger docs
+    path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
+    path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
+    path('api/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
 ]
 
 if settings.DEBUG:
