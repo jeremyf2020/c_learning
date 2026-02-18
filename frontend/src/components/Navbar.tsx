@@ -1,12 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import client from '../api/client';
 
 export default function Navbar() {
-  const { user, isAuthenticated, logout } = useAuth();
+  const { user, isAuthenticated, logout, unreadCount, setUnreadCount } = useAuth();
   const navigate = useNavigate();
-  const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -15,7 +14,7 @@ export default function Navbar() {
         setUnreadCount(unread);
       }).catch(() => {});
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, setUnreadCount]);
 
   const handleLogout = () => {
     logout();
@@ -23,7 +22,7 @@ export default function Navbar() {
   };
 
   return (
-    <nav className="navbar navbar-expand-lg navbar-dark bg-primary">
+    <nav className="navbar navbar-expand-lg navbar-dark el-navbar">
       <div className="container-fluid">
         <Link className="navbar-brand fw-bold" to="/">eLearning Platform</Link>
         <button className="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
@@ -64,7 +63,10 @@ export default function Navbar() {
                   </Link>
                 </li>
                 <li className="nav-item">
-                  <Link className="nav-link" to={`/profile/${user?.username}`}>
+                  <Link className="nav-link d-flex align-items-center" to={`/profile/${user?.username}`}>
+                    {user?.photo ? (
+                      <img src={user.photo} alt={user.username} className="rounded-circle me-1" style={{ width: 24, height: 24, objectFit: 'cover' }} />
+                    ) : null}
                     {user?.username} ({user?.user_type})
                   </Link>
                 </li>

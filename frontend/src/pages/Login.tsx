@@ -23,14 +23,12 @@ export default function Login() {
 
   return (
     <div className="min-vh-100 d-flex align-items-center justify-content-center bg-light">
-      <div className="card shadow-lg" style={{ maxWidth: 420, width: '100%' }}>
+      <div className="card el-glow" style={{ maxWidth: 420, width: '100%' }}>
+        <div className="el-auth-header">
+          <h3>eLearning Platform</h3>
+          <p>Sign in to your account</p>
+        </div>
         <div className="card-body p-4">
-          <div className="text-center mb-4">
-            <div className="bg-primary text-white rounded p-3 d-inline-block mb-3">
-              <h4 className="mb-0">eLearning</h4>
-            </div>
-            <h5 className="text-muted">Login / Create Account</h5>
-          </div>
           {error && <div className="alert alert-danger py-2">{error}</div>}
           <form onSubmit={handleSubmit}>
             <div className="mb-3">
@@ -55,7 +53,7 @@ export default function Login() {
                 required
               />
             </div>
-            <button type="submit" className="btn btn-primary w-100 mb-3">Log In</button>
+            <button type="submit" className="btn btn-primary el-btn-gradient w-100 mb-3">Log In</button>
           </form>
           <div className="text-center">
             <small className="text-muted">

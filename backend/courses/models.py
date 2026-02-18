@@ -122,3 +122,54 @@ class Feedback(models.Model):
 
     def __str__(self):
         return f"{self.student.username} feedback for {self.course.code}"
+
+
+class Assignment(models.Model):
+    """
+    AI-generated assignment (quiz or flashcards) from uploaded PDF content.
+    """
+    ASSIGNMENT_TYPE_CHOICES = (
+        ('quiz', 'Quiz'),
+        ('flashcard', 'Flashcards'),
+    )
+
+    course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name='assignments')
+    title = models.CharField(max_length=255)
+    assignment_type = models.CharField(max_length=10, choices=ASSIGNMENT_TYPE_CHOICES)
+    content = models.JSONField(help_text='JSON with questions or flashcards')
+    source_file = models.FileField(
+        upload_to='assignment_sources/',
+        blank=True,
+        null=True,
+        validators=[FileExtensionValidator(allowed_extensions=['pdf'])]
+    )
+    created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='created_assignments')
+    created_at = models.DateTimeField(auto_now_add=True)
+    deadline = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.course.code} - {self.title} ({self.get_assignment_type_display()})"
+
+
+class AssignmentSubmission(models.Model):
+    """
+    Student submission/attempt for an assignment.
+    """
+    assignment = models.ForeignKey(Assignment, on_delete=models.CASCADE, related_name='submissions')
+    student = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name='assignment_submissions',
+        limit_choices_to={'user_type': 'student'}
+    )
+    answers = models.JSONField(default=list, help_text='Student answers')
+    score = models.IntegerField(null=True, blank=True)
+    submitted_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('assignment', 'student')
+        ordering = ['-submitted_at']
+
+    def __str__(self):
+        return f"{self.student.username} - {self.assignment.title}"

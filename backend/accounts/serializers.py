@@ -6,20 +6,30 @@ from .models import User, StatusUpdate, Invitation
 
 class UserSerializer(serializers.ModelSerializer):
     """Serializer for User model"""
+    has_ai_key = serializers.SerializerMethodField()
+
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'full_name', 'user_type', 'bio', 'photo', 'date_of_birth', 'phone_number', 'is_blocked', 'created_at']
-        read_only_fields = ['id', 'created_at', 'is_blocked']
+        fields = ['id', 'username', 'email', 'full_name', 'user_type', 'bio', 'photo', 'date_of_birth', 'phone_number', 'is_blocked', 'created_at', 'ai_api_key', 'has_ai_key']
+        read_only_fields = ['id', 'created_at', 'is_blocked', 'has_ai_key']
+        extra_kwargs = {'ai_api_key': {'write_only': True}}
+
+    def get_has_ai_key(self, obj):
+        return bool(obj.ai_api_key)
 
 
 class UserDetailSerializer(serializers.ModelSerializer):
     """Detailed serializer for User model with status updates"""
     status_updates = serializers.SerializerMethodField()
+    has_ai_key = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'full_name', 'user_type', 'bio', 'photo', 'date_of_birth', 'phone_number', 'created_at', 'status_updates']
+        fields = ['id', 'username', 'email', 'full_name', 'user_type', 'bio', 'photo', 'date_of_birth', 'phone_number', 'created_at', 'status_updates', 'has_ai_key']
         read_only_fields = ['id', 'created_at']
+
+    def get_has_ai_key(self, obj):
+        return bool(obj.ai_api_key)
 
     def get_status_updates(self, obj):
         status_updates = obj.status_updates.all()[:5]

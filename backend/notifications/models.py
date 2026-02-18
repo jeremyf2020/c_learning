@@ -11,6 +11,7 @@ class Notification(models.Model):
         ('enrollment', 'New Enrollment'),
         ('material', 'New Material'),
         ('feedback', 'New Feedback'),
+        ('deadline', 'Assignment Deadline'),
         ('general', 'General'),
     )
 

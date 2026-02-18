@@ -2,13 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import client from '../api/client';
 import { useAuth } from '../context/AuthContext';
-import type { Course, Enrollment, StatusUpdate } from '../types';
+import type { Course, Enrollment, StatusUpdate, Assignment } from '../types';
 
 export default function StudentHome() {
   const { user } = useAuth();
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
   const [statusUpdates, setStatusUpdates] = useState<StatusUpdate[]>([]);
+  const [assignmentDeadlines, setAssignmentDeadlines] = useState<Assignment[]>([]);
   const [newStatus, setNewStatus] = useState('');
   const [loading, setLoading] = useState(true);
 
@@ -17,10 +18,13 @@ export default function StudentHome() {
       client.get('/enrollments/'),
       client.get('/courses/'),
       client.get('/status-updates/'),
-    ]).then(([enrollRes, courseRes, statusRes]) => {
+      client.get('/assignments/'),
+    ]).then(([enrollRes, courseRes, statusRes, assignRes]) => {
       setEnrollments(enrollRes.data);
       setCourses(courseRes.data);
       setStatusUpdates(statusRes.data);
+      const allAssignments = Array.isArray(assignRes.data) ? assignRes.data : (assignRes.data.results || []);
+      setAssignmentDeadlines(allAssignments.filter((a: Assignment) => a.deadline));
       setLoading(false);
     }).catch(() => setLoading(false));
   }, []);
@@ -39,9 +43,15 @@ export default function StudentHome() {
   const enrolledCourses = courses.filter(c => enrolledCourseIds.has(c.id));
   const availableCourses = courses.filter(c => !enrolledCourseIds.has(c.id));
 
-  const deadlines = enrolledCourses
+  const courseDeadlines = enrolledCourses
     .filter(c => c.end_date)
-    .map(c => ({ course: c.title, code: c.code, deadline: c.end_date!, id: c.id }))
+    .map(c => ({ label: `${c.code} - ${c.title}`, deadline: c.end_date!, link: `/courses/${c.id}`, badge: 'Enrolled', badgeClass: 'bg-info' }));
+
+  const assignDeadlines = assignmentDeadlines
+    .filter(a => enrolledCourseIds.has(a.course))
+    .map(a => ({ label: `${a.course_title} - ${a.title}`, deadline: a.deadline!, link: `/assignments/${a.id}`, badge: a.assignment_type === 'quiz' ? 'Quiz' : 'Flashcards', badgeClass: 'bg-warning text-dark' }));
+
+  const deadlines = [...courseDeadlines, ...assignDeadlines]
     .sort((a, b) => a.deadline.localeCompare(b.deadline));
 
   const handleEnroll = async (courseId: number) => {
@@ -98,16 +108,16 @@ export default function StudentHome() {
           <div className="card-body p-0">
             <table className="table table-striped mb-0">
               <thead>
-                <tr><th>Course</th><th>Status</th><th>Deadline</th></tr>
+                <tr><th>Course / Assignment</th><th>Type</th><th>Deadline</th></tr>
               </thead>
               <tbody>
                 {deadlines.length === 0 ? (
                   <tr><td colSpan={3} className="text-center text-muted">No upcoming deadlines</td></tr>
                 ) : (
-                  deadlines.map(d => (
-                    <tr key={d.id}>
-                      <td><Link to={`/courses/${d.id}`}>{d.code} - {d.course}</Link></td>
-                      <td><span className="badge bg-info">Enrolled</span></td>
+                  deadlines.map((d, i) => (
+                    <tr key={i}>
+                      <td><Link to={d.link}>{d.label}</Link></td>
+                      <td><span className={`badge ${d.badgeClass}`}>{d.badge}</span></td>
                       <td>{new Date(d.deadline).toLocaleDateString()}</td>
                     </tr>
                   ))
@@ -162,11 +172,15 @@ export default function StudentHome() {
 
       {/* Right column: Profile summary */}
       <div className="col-lg-4">
-        <div className="card mb-3">
+        <div className="card el-card-accent mb-3">
           <div className="card-body text-center">
-            <div className="bg-secondary rounded-circle d-inline-flex align-items-center justify-content-center mb-2" style={{ width: 60, height: 60 }}>
-              <span className="text-white fs-4">{user?.username?.charAt(0).toUpperCase()}</span>
-            </div>
+            {user?.photo ? (
+              <img src={user.photo} alt={user.username} className="rounded-circle object-fit-cover mb-2" style={{ width: 60, height: 60 }} />
+            ) : (
+              <div className="el-avatar-gradient rounded-circle d-inline-flex align-items-center justify-content-center mb-2" style={{ width: 60, height: 60 }}>
+                <span className="text-white fs-4">{user?.username?.charAt(0).toUpperCase()}</span>
+              </div>
+            )}
             <h6>{user?.username}</h6>
             <p className="text-muted small">{user?.full_name}</p>
             <Link to={`/profile/${user?.username}`} className="btn btn-sm btn-outline-primary">View Profile</Link>

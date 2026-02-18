@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import client from '../api/client';
 import { useAuth } from '../context/AuthContext';
-import type { Course, CourseMaterial, Enrollment, Feedback } from '../types';
+import type { Course, CourseMaterial, Enrollment, Feedback, Assignment, User } from '../types';
 
 export default function CourseDetail() {
   const { id } = useParams<{ id: string }>();
@@ -23,10 +23,25 @@ export default function CourseDetail() {
   const [uploadDragOver, setUploadDragOver] = useState(false);
   const uploadFileRef = useRef<HTMLInputElement>(null);
 
+  // Assignments
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [showGenerate, setShowGenerate] = useState(false);
+  const [genType, setGenType] = useState<'quiz' | 'flashcard'>('quiz');
+  const [genTitle, setGenTitle] = useState('');
+  const [genFile, setGenFile] = useState<File | null>(null);
+  const [genDeadline, setGenDeadline] = useState('');
+  const [generating, setGenerating] = useState(false);
+  const [genError, setGenError] = useState('');
+
   // Feedback form
   const [showFeedback, setShowFeedback] = useState(false);
   const [fbRating, setFbRating] = useState(5);
   const [fbComment, setFbComment] = useState('');
+
+  // Add student
+  const [showAddStudent, setShowAddStudent] = useState(false);
+  const [addStudentQuery, setAddStudentQuery] = useState('');
+  const [addStudentResults, setAddStudentResults] = useState<User[]>([]);
 
   const isTeacher = user?.user_type === 'teacher';
   const isOwner = course?.teacher === user?.id;
@@ -43,8 +58,12 @@ export default function CourseDetail() {
         setMaterials(matRes.data);
         setStudents(studRes.data);
 
-        const fbRes = await client.get(`/feedback/?course=${id}`);
+        const [fbRes, assignRes] = await Promise.all([
+          client.get(`/feedback/?course=${id}`),
+          client.get(`/assignments/?course=${id}`),
+        ]);
         setFeedbacks(Array.isArray(fbRes.data) ? fbRes.data : (fbRes.data.results || []));
+        setAssignments(Array.isArray(assignRes.data) ? assignRes.data : (assignRes.data.results || []));
       } catch { /* ignore */ }
       setLoading(false);
     };
@@ -78,13 +97,59 @@ export default function CourseDetail() {
     } catch { /* ignore */ }
   };
 
+  const handleSearchStudents = async (query: string) => {
+    setAddStudentQuery(query);
+    if (query.trim().length < 2) { setAddStudentResults([]); return; }
+    try {
+      const res = await client.get(`/users/search/?q=${encodeURIComponent(query)}&user_type=student`);
+      const enrolledIds = new Set(students.map(s => s.student));
+      setAddStudentResults(res.data.filter((u: User) => !enrolledIds.has(u.id)));
+    } catch { setAddStudentResults([]); }
+  };
+
+  const handleAddStudent = async (studentId: number) => {
+    try {
+      await client.post(`/courses/${id}/add_student/`, { student_id: studentId });
+      const studRes = await client.get(`/courses/${id}/students/`);
+      setStudents(studRes.data);
+      setAddStudentResults(addStudentResults.filter(u => u.id !== studentId));
+    } catch { /* ignore */ }
+  };
+
   const handleFeedback = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await client.post('/feedback/', { course: Number(id), rating: fbRating, comment: fbComment });
+      const res = await client.post('/feedback/', { course: Number(id), rating: fbRating, comment: fbComment });
+      setFeedbacks([...feedbacks, res.data]);
       setShowFeedback(false);
+      setFbRating(5);
       setFbComment('');
     } catch { /* ignore */ }
+  };
+
+  const handleGenerate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!genFile) return;
+    setGenerating(true);
+    setGenError('');
+    const formData = new FormData();
+    formData.append('course', id!);
+    formData.append('assignment_type', genType);
+    formData.append('file', genFile);
+    if (genTitle) formData.append('title', genTitle);
+    if (genDeadline) formData.append('deadline', new Date(genDeadline).toISOString());
+    try {
+      await client.post('/assignments/generate/', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+      const res = await client.get(`/assignments/?course=${id}`);
+      setAssignments(Array.isArray(res.data) ? res.data : (res.data.results || []));
+      setShowGenerate(false);
+      setGenTitle('');
+      setGenDeadline('');
+      setGenFile(null);
+    } catch (err: any) {
+      setGenError(err.response?.data?.error || 'Failed to generate assignment');
+    }
+    setGenerating(false);
   };
 
   const filteredStudents = students.filter(s =>
@@ -138,8 +203,8 @@ export default function CourseDetail() {
                   </div>
                   <div className="mb-2">
                     <div
-                      className={`border rounded p-3 text-center ${uploadDragOver ? 'border-primary bg-primary bg-opacity-10' : 'border-dashed'}`}
-                      style={{ cursor: 'pointer', borderStyle: uploadDragOver ? 'solid' : 'dashed' }}
+                      className={`p-3 text-center ${uploadDragOver ? 'el-drop-zone dragging' : 'el-drop-zone'}`}
+                      style={{ cursor: 'pointer' }}
                       onClick={() => uploadFileRef.current?.click()}
                       onDragOver={e => { e.preventDefault(); setUploadDragOver(true); }}
                       onDragEnter={e => { e.preventDefault(); setUploadDragOver(true); }}
@@ -195,49 +260,144 @@ export default function CourseDetail() {
             </div>
           </div>
 
-          {/* Feedback section for students */}
-          {user?.user_type === 'student' && (
-            <div className="card mb-3">
-              <div className="card-header d-flex justify-content-between">
-                <strong>Feedback</strong>
+          {/* Assignments section */}
+          <div className="card mb-3">
+            <div className="card-header d-flex justify-content-between align-items-center">
+              <strong>Assignments</strong>
+              {isOwner && (
+                <button className="btn btn-sm btn-primary" onClick={() => setShowGenerate(!showGenerate)}>+ Generate with AI</button>
+              )}
+            </div>
+            <div className="card-body">
+              {showGenerate && (
+                <form onSubmit={handleGenerate} className="border rounded p-3 mb-3 bg-light">
+                  {genError && <div className="alert alert-danger py-1 small">{genError}</div>}
+                  <div className="mb-2">
+                    <input className="form-control form-control-sm" placeholder="Title (optional)" value={genTitle} onChange={e => setGenTitle(e.target.value)} />
+                  </div>
+                  <div className="mb-2">
+                    <select className="form-select form-select-sm" value={genType} onChange={e => setGenType(e.target.value as 'quiz' | 'flashcard')}>
+                      <option value="quiz">Quiz (Multiple Choice)</option>
+                      <option value="flashcard">Flashcards</option>
+                    </select>
+                  </div>
+                  <div className="mb-2">
+                    <input type="file" className="form-control form-control-sm" accept=".pdf" onChange={e => setGenFile(e.target.files?.[0] || null)} />
+                    <div className="form-text">Upload a PDF to generate questions from</div>
+                  </div>
+                  <div className="mb-2">
+                    <label className="form-label small mb-0">Deadline (optional)</label>
+                    <input type="datetime-local" className="form-control form-control-sm" value={genDeadline} onChange={e => setGenDeadline(e.target.value)} />
+                  </div>
+                  <button type="submit" className="btn btn-sm btn-success" disabled={!genFile || generating}>
+                    {generating ? <><span className="spinner-border spinner-border-sm me-1"></span>Generating...</> : 'Generate'}
+                  </button>
+                </form>
+              )}
+              {assignments.length === 0 ? (
+                <p className="text-muted mb-0">No assignments yet.</p>
+              ) : (
+                <div className="list-group">
+                  {assignments.map(a => (
+                    <Link key={a.id} to={`/assignments/${a.id}`} className="list-group-item list-group-item-action">
+                      <div className="d-flex justify-content-between">
+                        <div>
+                          <strong>{a.title}</strong>
+                          <span className={`ms-2 badge ${a.assignment_type === 'quiz' ? 'bg-primary' : 'bg-info'}`}>
+                            {a.assignment_type === 'quiz' ? 'Quiz' : 'Flashcards'}
+                          </span>
+                          {a.deadline && (
+                            <small className="ms-2 text-muted">Due: {new Date(a.deadline).toLocaleDateString()}</small>
+                          )}
+                        </div>
+                        <small className="text-muted">{new Date(a.created_at).toLocaleDateString()}</small>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Feedback section */}
+          <div className="card mb-3">
+            <div className="card-header d-flex justify-content-between">
+              <strong>Feedback</strong>
+              {user?.user_type === 'student' && (
                 <button className="btn btn-sm btn-outline-primary" onClick={() => setShowFeedback(!showFeedback)}>Leave Feedback</button>
-              </div>
-              <div className="card-body">
-                {showFeedback && (
-                  <form onSubmit={handleFeedback} className="border rounded p-3 mb-3 bg-light">
-                    <div className="mb-2">
-                      <label className="form-label small">Rating (1-5)</label>
-                      <select className="form-select form-select-sm" value={fbRating} onChange={e => setFbRating(Number(e.target.value))}>
-                        {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}</option>)}
-                      </select>
-                    </div>
-                    <div className="mb-2">
-                      <textarea className="form-control form-control-sm" placeholder="Your comment..." rows={2} value={fbComment} onChange={e => setFbComment(e.target.value)} required />
-                    </div>
-                    <button type="submit" className="btn btn-sm btn-success">Submit</button>
-                  </form>
-                )}
-                {feedbacks.map(f => (
+              )}
+            </div>
+            <div className="card-body">
+              {showFeedback && user?.user_type === 'student' && (
+                <form onSubmit={handleFeedback} className="border rounded p-3 mb-3 bg-light">
+                  <div className="mb-2">
+                    <label className="form-label small">Rating (1-5)</label>
+                    <select className="form-select form-select-sm" value={fbRating} onChange={e => setFbRating(Number(e.target.value))}>
+                      {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}</option>)}
+                    </select>
+                  </div>
+                  <div className="mb-2">
+                    <textarea className="form-control form-control-sm" placeholder="Your comment..." rows={2} value={fbComment} onChange={e => setFbComment(e.target.value)} required />
+                  </div>
+                  <button type="submit" className="btn btn-sm btn-success">Submit</button>
+                </form>
+              )}
+              {feedbacks.length === 0 ? (
+                <p className="text-muted mb-0">No feedback yet.</p>
+              ) : (
+                feedbacks.map(f => (
                   <div key={f.id} className="border-bottom py-2">
                     <strong>{f.student_name}</strong>
                     {f.rating && <span className="ms-2 badge bg-warning text-dark">{f.rating}/5</span>}
                     <p className="mb-0 small">{f.comment}</p>
                   </div>
-                ))}
-              </div>
+                ))
+              )}
             </div>
-          )}
+          </div>
         </div>
 
         {/* Students panel */}
         <div className="col-lg-5">
           <div className="card">
-            <div className="card-header"><strong>Students ({students.length})</strong></div>
+            <div className="card-header d-flex justify-content-between align-items-center">
+              <strong>Students ({students.length})</strong>
+              {isOwner && (
+                <button className="btn btn-sm btn-primary" onClick={() => setShowAddStudent(!showAddStudent)}>+ Add Student</button>
+              )}
+            </div>
             <div className="card-body">
+              {showAddStudent && (
+                <div className="border rounded p-3 mb-3 bg-light">
+                  <input
+                    type="text"
+                    className="form-control form-control-sm mb-2"
+                    placeholder="Search students by name or email..."
+                    value={addStudentQuery}
+                    onChange={e => handleSearchStudents(e.target.value)}
+                  />
+                  {addStudentResults.length > 0 && (
+                    <div className="list-group list-group-flush" style={{ maxHeight: 200, overflowY: 'auto' }}>
+                      {addStudentResults.map(u => (
+                        <div key={u.id} className="list-group-item d-flex justify-content-between align-items-center py-1 px-2">
+                          <div>
+                            <span className="fw-bold small">{u.username}</span>
+                            {u.full_name && <span className="text-muted small ms-1">({u.full_name})</span>}
+                          </div>
+                          <button className="btn btn-sm btn-success py-0 px-2" onClick={() => handleAddStudent(u.id)}>Add</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {addStudentQuery.length >= 2 && addStudentResults.length === 0 && (
+                    <p className="text-muted small mb-0">No students found.</p>
+                  )}
+                </div>
+              )}
               <input
                 type="text"
                 className="form-control form-control-sm mb-3"
-                placeholder="Search students..."
+                placeholder="Search enrolled students..."
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
               />
@@ -249,7 +409,7 @@ export default function CourseDetail() {
                     <div key={s.id} className="list-group-item">
                       <div className="d-flex align-items-center">
                         <div
-                          className="rounded-circle bg-info d-flex align-items-center justify-content-center me-2 flex-shrink-0"
+                          className="rounded-circle el-avatar-gradient d-flex align-items-center justify-content-center me-2 flex-shrink-0"
                           style={{ width: 36, height: 36 }}
                         >
                           <span className="text-white fw-bold small">{s.student_name.charAt(0).toUpperCase()}</span>

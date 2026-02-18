@@ -140,7 +140,7 @@ describe('Notifications', () => {
     renderNotifications();
 
     await waitFor(() => {
-      expect(screen.getByText('enrollment')).toBeInTheDocument();
+      expect(screen.getByText('Enrollment')).toBeInTheDocument();
     });
   });
 });

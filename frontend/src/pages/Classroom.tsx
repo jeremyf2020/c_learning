@@ -609,7 +609,14 @@ export default function Classroom() {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: 'chat', message: newMessage }));
     } else {
-      client.post(`/chatrooms/${selectedRoom.id}/send/`, { content: newMessage }).catch(() => {});
+      client.post(`/chatrooms/${selectedRoom.id}/send/`, { content: newMessage }).then(res => {
+        setChatMessages(prev => [...prev, {
+          id: res.data.id,
+          username: res.data.sender_name,
+          message: res.data.content,
+          user_type: res.data.user_type,
+        }]);
+      }).catch(() => {});
     }
     setNewMessage('');
   };
@@ -630,7 +637,7 @@ export default function Classroom() {
   return (
     <div style={{ height: 'calc(100vh - 80px)', display: 'flex', flexDirection: 'column' }}>
       {/* Header bar with room selector */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: '#f8f9fa', borderBottom: '1px solid #dee2e6' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'var(--el-green-50)', borderBottom: '1px solid #dee2e6' }}>
         <select
           className="form-select form-select-sm"
           style={{ width: 220 }}
@@ -669,7 +676,7 @@ export default function Classroom() {
           <div style={{ flex: 7, display: 'flex', flexDirection: 'column', borderRight: '1px solid #dee2e6' }}>
             {/* Teacher toolbar */}
             {isTeacher && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px', background: '#f1f3f5', borderBottom: '1px solid #dee2e6', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px', background: 'var(--el-green-50)', borderBottom: '1px solid #dee2e6', flexWrap: 'wrap' }}>
                 {([
                   { id: 'pen' as WhiteboardTool, title: 'Pen', icon: <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M12.146.854a.5.5 0 0 1 .708 0l2.292 2.292a.5.5 0 0 1 0 .708l-9.5 9.5a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l9.5-9.5zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293l6.5-6.5z"/></svg> },
                   { id: 'line' as WhiteboardTool, title: 'Line', icon: <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path fillRule="evenodd" d="M13.854 2.146a.5.5 0 0 1 0 .708l-11 11a.5.5 0 0 1-.708-.708l11-11a.5.5 0 0 1 .708 0z"/></svg> },
@@ -796,7 +803,7 @@ export default function Classroom() {
                     fontSize: fontSize * 0.7,
                     color,
                     background: 'rgba(255,255,255,0.9)',
-                    border: '1.5px solid #0d6efd',
+                    border: '1.5px solid var(--el-green)',
                     borderRadius: 3,
                     padding: '2px 6px',
                     outline: 'none',
@@ -839,7 +846,7 @@ export default function Classroom() {
 
           {/* Chat — right 30%, YouTube live chat style */}
           <div style={{ flex: 3, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-            <div style={{ padding: '8px 12px', background: '#f8f9fa', borderBottom: '1px solid #dee2e6', fontWeight: 600, fontSize: '0.9rem' }}>
+            <div style={{ padding: '8px 12px', background: 'var(--el-green-50)', borderBottom: '1px solid #dee2e6', fontWeight: 600, fontSize: '0.9rem' }}>
               Live Chat
             </div>
             {/* Messages */}
@@ -855,9 +862,9 @@ export default function Classroom() {
                       padding: '1px 6px',
                       borderRadius: 4,
                       ...(isMsgTeacher
-                        ? { background: '#0d6efd', color: '#fff' }
+                        ? { background: 'var(--el-green)', color: '#fff' }
                         : isMe
-                          ? { border: '1.5px solid #0d6efd', color: '#0d6efd' }
+                          ? { border: '1.5px solid var(--el-green)', color: 'var(--el-green-dark)' }
                           : { color: '#495057' }
                       )
                     }}>

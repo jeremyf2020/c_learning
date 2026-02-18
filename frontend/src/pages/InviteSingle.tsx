@@ -79,7 +79,7 @@ export default function InviteSingle() {
                 <label htmlFor="bio" className="form-label">Bio</label>
                 <textarea id="bio" name="bio" className="form-control" rows={3} value={formData.bio} onChange={handleChange} />
               </div>
-              <button type="submit" className="btn btn-primary">Send Invitation</button>
+              <button type="submit" className="btn btn-primary el-btn-gradient">Send Invitation</button>
               <button type="button" className="btn btn-secondary ms-2" onClick={() => navigate('/invitations')}>Cancel</button>
             </form>
           </div>

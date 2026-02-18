@@ -4,7 +4,7 @@ from django.contrib import messages
 from django.utils import timezone
 from .models import Course, CourseMaterial, Enrollment, Feedback
 from .forms import CourseForm, CourseMaterialForm, FeedbackForm
-from notifications.models import Notification
+from notifications.utils import create_notification, create_bulk_notifications
 
 
 @login_required
@@ -116,6 +116,16 @@ def course_delete(request, pk):
 
     if request.method == 'POST':
         course_title = course.title
+        course_code = course.code
+        enrolled_students = Enrollment.objects.filter(course=course, is_active=True).select_related('student')
+        recipients = [enrollment.student for enrollment in enrolled_students]
+        if recipients:
+            create_bulk_notifications(
+                recipients=recipients,
+                notification_type='general',
+                title=f'Course deleted: {course_code}',
+                message=f'The course "{course_title}" has been deleted by the teacher.',
+            )
         course.delete()
         messages.success(request, f'Course "{course_title}" deleted successfully!')
         return redirect('courses:course_list')
@@ -141,14 +151,14 @@ def upload_material(request, course_pk):
             material.save()
 
             enrolled_students = Enrollment.objects.filter(course=course, is_active=True).select_related('student')
-            for enrollment in enrolled_students:
-                Notification.objects.create(
-                    recipient=enrollment.student,
-                    notification_type='material',
-                    title=f'New material in {course.code}',
-                    message=f'New material "{material.title}" has been added to {course.title}.',
-                    link=f'/courses/{course.pk}/'
-                )
+            recipients = [enrollment.student for enrollment in enrolled_students]
+            create_bulk_notifications(
+                recipients=recipients,
+                notification_type='material',
+                title=f'New material in {course.code}',
+                message=f'New material "{material.title}" has been added to {course.title}.',
+                link=f'/courses/{course.pk}/',
+            )
 
             messages.success(request, 'Course material uploaded successfully!')
             return redirect('courses:course_detail', pk=course_pk)
@@ -178,12 +188,12 @@ def enroll_course(request, pk):
     )
 
     if created:
-        Notification.objects.create(
+        create_notification(
             recipient=course.teacher,
             notification_type='enrollment',
             title=f'New enrollment in {course.code}',
             message=f'{request.user.username} has enrolled in {course.title}.',
-            link=f'/courses/{course.pk}/'
+            link=f'/courses/{course.pk}/',
         )
         messages.success(request, f'You have successfully enrolled in "{course.title}"!')
     else:
@@ -210,6 +220,13 @@ def unenroll_course(request, pk):
     if request.method == 'POST':
         enrollment.is_active = False
         enrollment.save()
+        create_notification(
+            recipient=course.teacher,
+            notification_type='enrollment',
+            title=f'Student left {course.code}',
+            message=f'{request.user.username} has unenrolled from {course.title}.',
+            link=f'/courses/{course.pk}/',
+        )
         messages.success(request, f'You have unenrolled from "{course.title}".')
         return redirect('courses:course_list')
 
@@ -241,12 +258,12 @@ def submit_feedback(request, course_pk):
             feedback.course = course
             feedback.save()
 
-            Notification.objects.create(
+            create_notification(
                 recipient=course.teacher,
                 notification_type='feedback',
                 title=f'New feedback for {course.code}',
                 message=f'{request.user.username} has left feedback for {course.title}.',
-                link=f'/courses/{course.pk}/'
+                link=f'/courses/{course.pk}/',
             )
 
             messages.success(request, 'Thank you for your feedback!')
@@ -273,6 +290,13 @@ def block_student(request, course_pk, student_pk):
     if request.method == 'POST':
         enrollment.is_active = False
         enrollment.save()
+        create_notification(
+            recipient=student,
+            notification_type='enrollment',
+            title=f'Removed from {course.code}',
+            message=f'You have been removed from "{course.title}" by the teacher.',
+            link=f'/courses/{course.pk}/',
+        )
         messages.success(request, f'Student {student.username} has been removed from the course.')
         return redirect('courses:course_detail', pk=course_pk)
 

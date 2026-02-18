@@ -29,6 +29,7 @@ class User(AbstractUser):
     date_of_birth = models.DateField(null=True, blank=True)
     phone_number = models.CharField(max_length=20, blank=True)
     is_blocked = models.BooleanField(default=False)
+    ai_api_key = models.CharField(max_length=255, blank=True, help_text='OpenAI API key for AI-generated assignments')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

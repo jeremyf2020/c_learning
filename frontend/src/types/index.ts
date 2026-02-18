@@ -11,6 +11,7 @@ export interface User {
   is_blocked: boolean;
   created_at: string;
   status_updates?: StatusUpdate[];
+  has_ai_key?: boolean;
 }
 
 export interface StatusUpdate {
@@ -174,4 +175,40 @@ export interface BulkUploadResult {
   success: Array<{ row: number; email: string }>;
   errors: Array<{ row: number; error: string }>;
   total: number;
+}
+
+export interface QuizQuestion {
+  question: string;
+  options: string[];
+  correct: number;
+}
+
+export interface Flashcard {
+  front: string;
+  back: string;
+}
+
+export interface Assignment {
+  id: number;
+  course: number;
+  course_title: string;
+  title: string;
+  assignment_type: 'quiz' | 'flashcard';
+  content: { questions?: QuizQuestion[]; cards?: Flashcard[] };
+  source_file: string | null;
+  created_by: number;
+  created_by_name: string;
+  created_at: string;
+  deadline: string | null;
+  submission_count: number;
+}
+
+export interface AssignmentSubmission {
+  id: number;
+  assignment: number;
+  student: number;
+  student_name: string;
+  answers: number[];
+  score: number | null;
+  submitted_at: string;
 }

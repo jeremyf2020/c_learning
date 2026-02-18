@@ -69,7 +69,7 @@ export default function TeacherHome() {
         {/* Course list */}
         <div className="d-flex justify-content-between align-items-center mb-3">
           <h5 className="mb-0">My Courses</h5>
-          <Link to="/courses/create" className="btn btn-primary btn-sm">+ New Course</Link>
+          <Link to="/courses/create" className="btn btn-primary btn-sm el-btn-gradient">+ New Course</Link>
         </div>
         <div className="row g-3 mb-4">
           {courses.map(c => (
@@ -120,12 +120,16 @@ export default function TeacherHome() {
                 {searchResults.map(u => (
                   <div key={u.id} className="list-group-item">
                     <div className="d-flex align-items-start">
-                      <div
-                        className={`rounded-circle d-flex align-items-center justify-content-center me-3 flex-shrink-0 ${u.user_type === 'teacher' ? 'bg-primary' : 'bg-info'}`}
-                        style={{ width: 44, height: 44 }}
-                      >
-                        <span className="text-white fw-bold">{u.username.charAt(0).toUpperCase()}</span>
-                      </div>
+                      {u.photo ? (
+                        <img src={u.photo} alt={u.username} className="rounded-circle object-fit-cover me-3 flex-shrink-0" style={{ width: 44, height: 44 }} />
+                      ) : (
+                        <div
+                          className="rounded-circle d-flex align-items-center justify-content-center me-3 flex-shrink-0 el-avatar-gradient"
+                          style={{ width: 44, height: 44 }}
+                        >
+                          <span className="text-white fw-bold">{u.username.charAt(0).toUpperCase()}</span>
+                        </div>
+                      )}
                       <div className="flex-grow-1">
                         <div className="d-flex justify-content-between align-items-center">
                           <div>
@@ -149,11 +153,15 @@ export default function TeacherHome() {
 
       {/* Right column: Feeds & Profile */}
       <div className="col-lg-4">
-        <div className="card mb-3">
+        <div className="card el-card-accent mb-3">
           <div className="card-body text-center">
-            <div className="bg-primary rounded-circle d-inline-flex align-items-center justify-content-center mb-2" style={{ width: 60, height: 60 }}>
-              <span className="text-white fs-4">{user?.username?.charAt(0).toUpperCase()}</span>
-            </div>
+            {user?.photo ? (
+              <img src={user.photo} alt={user.username} className="rounded-circle object-fit-cover mb-2" style={{ width: 60, height: 60 }} />
+            ) : (
+              <div className="el-avatar-gradient rounded-circle d-inline-flex align-items-center justify-content-center mb-2" style={{ width: 60, height: 60 }}>
+                <span className="text-white fs-4">{user?.username?.charAt(0).toUpperCase()}</span>
+              </div>
+            )}
             <h6>{user?.username}</h6>
             <p className="text-muted small">{user?.full_name}</p>
             <Link to={`/profile/${user?.username}`} className="btn btn-sm btn-outline-primary">Profile</Link>
@@ -161,7 +169,7 @@ export default function TeacherHome() {
         </div>
 
         {/* Feeds */}
-        <div className="card mb-3">
+        <div className="card el-card-accent mb-3">
           <div className="card-header"><strong>Feeds</strong></div>
           <div className="card-body">
             <form onSubmit={handlePostStatus} className="mb-3">

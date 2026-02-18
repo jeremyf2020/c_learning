@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Course, CourseMaterial, Enrollment, Feedback
+from .models import Course, CourseMaterial, Enrollment, Feedback, Assignment, AssignmentSubmission
 
 
 class CourseSerializer(serializers.ModelSerializer):
@@ -49,3 +49,29 @@ class FeedbackSerializer(serializers.ModelSerializer):
         model = Feedback
         fields = ['id', 'course', 'student', 'student_name', 'rating', 'comment', 'created_at']
         read_only_fields = ['id', 'student', 'created_at']
+
+
+class AssignmentSerializer(serializers.ModelSerializer):
+    """Serializer for Assignment model"""
+    created_by_name = serializers.CharField(source='created_by.username', read_only=True)
+    course_title = serializers.CharField(source='course.title', read_only=True)
+    submission_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Assignment
+        fields = ['id', 'course', 'course_title', 'title', 'assignment_type', 'content',
+                  'source_file', 'created_by', 'created_by_name', 'created_at', 'deadline', 'submission_count']
+        read_only_fields = ['id', 'created_by', 'created_at']
+
+    def get_submission_count(self, obj):
+        return obj.submissions.count()
+
+
+class AssignmentSubmissionSerializer(serializers.ModelSerializer):
+    """Serializer for AssignmentSubmission model"""
+    student_name = serializers.CharField(source='student.username', read_only=True)
+
+    class Meta:
+        model = AssignmentSubmission
+        fields = ['id', 'assignment', 'student', 'student_name', 'answers', 'score', 'submitted_at']
+        read_only_fields = ['id', 'student', 'score', 'submitted_at']

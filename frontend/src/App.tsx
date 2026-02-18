@@ -16,6 +16,7 @@ import CourseDetail from './pages/CourseDetail';
 import CourseCreate from './pages/CourseCreate';
 import Classroom from './pages/Classroom';
 import Notifications from './pages/Notifications';
+import AssignmentView from './pages/AssignmentView';
 
 function Home() {
     const { user } = useAuth();
@@ -46,6 +47,9 @@ function AppRoutes() {
             {/* Courses */}
             <Route path="/courses/:id" element={<ProtectedRoute><CourseDetail /></ProtectedRoute>} />
             <Route path="/courses/create" element={<ProtectedRoute requiredType="teacher"><CourseCreate /></ProtectedRoute>} />
+
+            {/* Assignments */}
+            <Route path="/assignments/:id" element={<ProtectedRoute><AssignmentView /></ProtectedRoute>} />
 
             {/* Classroom / Chat */}
             <Route path="/classroom" element={<ProtectedRoute><Classroom /></ProtectedRoute>} />

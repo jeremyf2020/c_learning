@@ -73,9 +73,12 @@ export default function AcceptInvitation() {
   return (
     <div className="row justify-content-center mt-5">
       <div className="col-md-6">
-        <div className="card shadow">
+        <div className="card el-glow">
+          <div className="el-auth-header">
+            <h3>Complete Your Registration</h3>
+            <p>Set up your account to get started</p>
+          </div>
           <div className="card-body">
-            <h2 className="card-title text-center mb-4">Complete Your Registration</h2>
             {invitation && (
               <div className="alert alert-info">
                 <p><strong>Name:</strong> {invitation.full_name}</p>
@@ -120,7 +123,7 @@ export default function AcceptInvitation() {
                   required
                 />
               </div>
-              <button type="submit" className="btn btn-primary w-100">Complete Registration</button>
+              <button type="submit" className="btn btn-primary el-btn-gradient w-100">Complete Registration</button>
             </form>
           </div>
         </div>

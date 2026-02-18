@@ -8,7 +8,7 @@ from django.utils import timezone
 from rest_framework import viewsets, permissions, status
 from rest_framework.authtoken.models import Token
 from rest_framework.decorators import action, api_view, permission_classes
-from rest_framework.parsers import MultiPartParser
+from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.response import Response
 
 from .models import User, StatusUpdate, Invitation
@@ -36,12 +36,12 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=False, methods=['get'])
     def me(self, request):
-        serializer = UserDetailSerializer(request.user)
+        serializer = UserDetailSerializer(request.user, context={'request': request})
         return Response(serializer.data)
 
-    @action(detail=False, methods=['patch'])
+    @action(detail=False, methods=['patch'], parser_classes=[MultiPartParser, FormParser])
     def update_profile(self, request):
-        serializer = UserSerializer(request.user, data=request.data, partial=True)
+        serializer = UserSerializer(request.user, data=request.data, partial=True, context={'request': request})
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data)
@@ -57,7 +57,7 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
             qs = qs.filter(Q(username__icontains=query) | Q(full_name__icontains=query) | Q(email__icontains=query))
         if user_type:
             qs = qs.filter(user_type=user_type)
-        serializer = UserSerializer(qs[:50], many=True)
+        serializer = UserSerializer(qs[:50], many=True, context={'request': request})
         return Response(serializer.data)
 
     @action(detail=True, methods=['post'])
@@ -99,7 +99,7 @@ class StatusUpdateViewSet(viewsets.ModelViewSet):
 class InvitationViewSet(viewsets.ModelViewSet):
     serializer_class = InvitationSerializer
     permission_classes = [IsTeacher]
-    http_method_names = ['get', 'post']
+    http_method_names = ['get', 'post', 'delete']
 
     def get_queryset(self):
         return Invitation.objects.filter(invited_by=self.request.user)
@@ -211,7 +211,7 @@ def accept_invite(request, token):
     token_obj, _ = Token.objects.get_or_create(user=user)
     return Response({
         'token': token_obj.key,
-        'user': UserSerializer(user).data,
+        'user': UserSerializer(user, context={'request': request}).data,
     }, status=status.HTTP_201_CREATED)
 
 
@@ -237,7 +237,7 @@ def auth_login(request):
     token_obj, _ = Token.objects.get_or_create(user=user)
     return Response({
         'token': token_obj.key,
-        'user': UserSerializer(user).data,
+        'user': UserSerializer(user, context={'request': request}).data,
     })
 
 
@@ -250,14 +250,14 @@ def auth_register(request):
     token_obj, _ = Token.objects.get_or_create(user=user)
     return Response({
         'token': token_obj.key,
-        'user': UserSerializer(user).data,
+        'user': UserSerializer(user, context={'request': request}).data,
     }, status=status.HTTP_201_CREATED)
 
 
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def auth_me(request):
-    serializer = UserDetailSerializer(request.user)
+    serializer = UserDetailSerializer(request.user, context={'request': request})
     return Response(serializer.data)
 
 

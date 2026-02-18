@@ -8,7 +8,7 @@ from accounts.api import (
     validate_invite, accept_invite,
     auth_login, auth_register, auth_me,
 )
-from courses.api import CourseViewSet, CourseMaterialViewSet, EnrollmentViewSet, FeedbackViewSet
+from courses.api import CourseViewSet, CourseMaterialViewSet, EnrollmentViewSet, FeedbackViewSet, AssignmentViewSet, AssignmentSubmissionViewSet
 from chat.api import ChatRoomViewSet
 from notifications.api import NotificationViewSet
 
@@ -19,7 +19,9 @@ router.register(r'invitations', InvitationViewSet, basename='invitation')
 router.register(r'courses', CourseViewSet)
 router.register(r'materials', CourseMaterialViewSet)
 router.register(r'enrollments', EnrollmentViewSet)
-router.register(r'feedback', FeedbackViewSet)
+router.register(r'feedback', FeedbackViewSet, basename='feedback')
+router.register(r'assignments', AssignmentViewSet, basename='assignment')
+router.register(r'assignment-submissions', AssignmentSubmissionViewSet, basename='assignment-submission')
 router.register(r'chatrooms', ChatRoomViewSet, basename='chatroom')
 router.register(r'notifications', NotificationViewSet, basename='notification')
 

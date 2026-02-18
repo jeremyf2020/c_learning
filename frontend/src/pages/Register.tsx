@@ -44,9 +44,12 @@ export default function Register() {
   return (
     <div className="row justify-content-center mt-5">
       <div className="col-md-6">
-        <div className="card shadow">
+        <div className="card el-glow">
+          <div className="el-auth-header">
+            <h3>Create Account</h3>
+            <p>Join the eLearning platform</p>
+          </div>
           <div className="card-body">
-            <h2 className="card-title text-center mb-4">Register</h2>
             {error && <div className="alert alert-danger">{error}</div>}
             <form onSubmit={handleSubmit}>
               <div className="mb-3">
@@ -76,7 +79,7 @@ export default function Register() {
                 <label htmlFor="password_confirm" className="form-label">Confirm Password</label>
                 <input id="password_confirm" name="password_confirm" type="password" className="form-control" value={formData.password_confirm} onChange={handleChange} required />
               </div>
-              <button type="submit" className="btn btn-primary w-100">Register</button>
+              <button type="submit" className="btn btn-primary el-btn-gradient w-100">Register</button>
             </form>
             <p className="text-center mt-3">
               Already have an account? <Link to="/login">Log In</Link>

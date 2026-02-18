@@ -29,6 +29,16 @@ export default function InvitationList() {
     }
   };
 
+  const handleDelete = async (id: number) => {
+    if (!window.confirm('Delete this invitation?')) return;
+    try {
+      await client.delete(`/invitations/${id}/`);
+      setInvitations(invitations.filter(inv => inv.id !== id));
+    } catch {
+      // silently fail
+    }
+  };
+
   if (loading) {
     return <div className="text-center mt-5"><p>Loading invitations...</p></div>;
   }
@@ -38,7 +48,7 @@ export default function InvitationList() {
       <div className="d-flex justify-content-between align-items-center mb-3">
         <h2>Invitations</h2>
         <div>
-          <Link to="/invitations/new" className="btn btn-primary">Invite User</Link>
+          <Link to="/invitations/new" className="btn btn-primary el-btn-gradient">Invite User</Link>
           <Link to="/invitations/bulk" className="btn btn-outline-primary ms-2">Bulk Invite</Link>
         </div>
       </div>
@@ -82,10 +92,18 @@ export default function InvitationList() {
                 <td>
                   {inv.status === 'pending' && (
                     <button
-                      className="btn btn-sm btn-outline-primary"
+                      className="btn btn-sm btn-outline-primary me-1"
                       onClick={() => handleResend(inv.id)}
                     >
                       Resend
+                    </button>
+                  )}
+                  {inv.status !== 'accepted' && (
+                    <button
+                      className="btn btn-sm btn-outline-danger"
+                      onClick={() => handleDelete(inv.id)}
+                    >
+                      Delete
                     </button>
                   )}
                 </td>

@@ -31,7 +31,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
             await self.close()
             return
 
-        await self.add_participant(self.user.id, self.room_name)
+        # Verify room exists and user is a participant
+        if not await self.is_participant(self.user.id, self.room_name):
+            await self.close()
+            return
 
         # Join room group
         await self.channel_layer.group_add(
@@ -92,7 +95,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         if msg_type == 'chat':
             message = data.get('message', '')
-            if message.strip():
+            if message.strip() and len(message) <= 5000:
                 await self.save_message(self.user.id, self.room_name, message)
                 await self.channel_layer.group_send(
                     self.room_group_name,
@@ -274,6 +277,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
     # --- Database helpers ---
 
     @database_sync_to_async
+    def is_participant(self, user_id, room_name):
+        room = find_room(room_name)
+        if not room:
+            return False
+        return room.participants.filter(id=user_id).exists()
+
+    @database_sync_to_async
     def add_participant(self, user_id, room_name):
         user = User.objects.get(id=user_id)
         room = find_room(room_name)
@@ -316,6 +326,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
         room.save(update_fields=['whiteboard_data'])
         return removed
 
+    MAX_WHITEBOARD_ACTIONS = 500
+
     @database_sync_to_async
     def append_whiteboard_action(self, room_name, action):
         room = find_room(room_name)
@@ -325,6 +337,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
             actions = json.loads(room.whiteboard_data) if room.whiteboard_data else []
         except (json.JSONDecodeError, TypeError):
             actions = []
+        if len(actions) >= self.MAX_WHITEBOARD_ACTIONS:
+            # Drop oldest actions to stay within limit
+            actions = actions[-(self.MAX_WHITEBOARD_ACTIONS - 1):]
         actions.append(action)
         room.whiteboard_data = json.dumps(actions)
         room.save(update_fields=['whiteboard_data'])

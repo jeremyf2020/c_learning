@@ -1,0 +1,252 @@
+/* ===== CSS Custom Properties ===== */
+:root {
+  --el-green: #4ade80;
+  --el-green-dark: #16a34a;
+  --el-green-50: #f0fdf4;
+  --el-blue: #38bdf8;
+  --el-blue-dark: #0284c7;
+  --el-blue-50: #eff6ff;
+  --el-gradient: linear-gradient(135deg, #4ade80, #38bdf8);
+  --el-gradient-hover: linear-gradient(135deg, #16a34a, #0284c7);
+  --el-shadow: 0 2px 12px rgba(74, 222, 128, 0.15);
+  --el-shadow-hover: 0 4px 20px rgba(74, 222, 128, 0.25);
+}
+
+/* ===== Global ===== */
+body {
+  background-color: #f8fafc !important;
+}
+
+/* ===== Bootstrap Variable Overrides ===== */
+.btn-primary {
+  --bs-btn-bg: var(--el-green);
+  --bs-btn-border-color: var(--el-green);
+  --bs-btn-hover-bg: var(--el-green-dark);
+  --bs-btn-hover-border-color: var(--el-green-dark);
+  --bs-btn-active-bg: var(--el-green-dark);
+  --bs-btn-active-border-color: var(--el-green-dark);
+  --bs-btn-disabled-bg: var(--el-green);
+  --bs-btn-disabled-border-color: var(--el-green);
+}
+
+.btn-outline-primary {
+  --bs-btn-color: var(--el-green-dark);
+  --bs-btn-border-color: var(--el-green);
+  --bs-btn-hover-bg: var(--el-green);
+  --bs-btn-hover-border-color: var(--el-green);
+  --bs-btn-hover-color: #fff;
+  --bs-btn-active-bg: var(--el-green-dark);
+  --bs-btn-active-border-color: var(--el-green-dark);
+  --bs-btn-active-color: #fff;
+}
+
+.btn-outline-light {
+  --bs-btn-hover-bg: rgba(255, 255, 255, 0.15);
+  --bs-btn-hover-color: #fff;
+}
+
+.badge.bg-primary {
+  background-color: var(--el-green) !important;
+}
+
+.badge.bg-info {
+  background-color: var(--el-blue) !important;
+  color: #fff !important;
+}
+
+.badge.bg-success {
+  background-color: var(--el-green) !important;
+}
+
+/* ===== Cards ===== */
+.card {
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+  box-shadow: var(--el-shadow);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.card:hover {
+  box-shadow: var(--el-shadow-hover);
+}
+
+.card-header {
+  background-color: var(--el-green-50) !important;
+  border-bottom: 1px solid #e2e8f0;
+  border-radius: 0.75rem 0.75rem 0 0 !important;
+}
+
+.card-footer {
+  border-radius: 0 0 0.75rem 0.75rem !important;
+}
+
+/* ===== Forms ===== */
+.form-control:focus,
+.form-select:focus {
+  border-color: var(--el-green) !important;
+  box-shadow: 0 0 0 0.2rem rgba(74, 222, 128, 0.25) !important;
+}
+
+/* ===== Tables ===== */
+.table thead th {
+  background-color: var(--el-green-50);
+  border-bottom-color: #d1fae5;
+  color: #166534;
+  font-weight: 600;
+}
+
+/* ===== Alerts ===== */
+.alert-info {
+  background-color: var(--el-blue-50) !important;
+  border-color: #bae6fd !important;
+  color: var(--el-blue-dark) !important;
+}
+
+.alert-success {
+  background-color: var(--el-green-50) !important;
+  border-color: #bbf7d0 !important;
+  color: var(--el-green-dark) !important;
+}
+
+/* ===== Spinners ===== */
+.spinner-border {
+  color: var(--el-green) !important;
+}
+
+/* ===== Links ===== */
+a {
+  color: var(--el-blue-dark);
+}
+
+a:hover {
+  color: #0369a1;
+}
+
+/* ===== Navbar override ===== */
+.navbar.bg-primary {
+  background: var(--el-gradient) !important;
+}
+
+/* ===== Custom Classes ===== */
+
+/* Gradient navbar */
+.el-navbar {
+  background: var(--el-gradient) !important;
+  box-shadow: 0 2px 8px rgba(74, 222, 128, 0.3);
+}
+
+/* Gradient button */
+.el-btn-gradient {
+  background: var(--el-gradient) !important;
+  border: none !important;
+  color: #fff !important;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(74, 222, 128, 0.3);
+}
+
+.el-btn-gradient:hover {
+  background: var(--el-gradient-hover) !important;
+  box-shadow: 0 4px 16px rgba(74, 222, 128, 0.4);
+  transform: translateY(-1px);
+  color: #fff !important;
+}
+
+/* Auth page header */
+.el-auth-header {
+  background: var(--el-gradient);
+  padding: 2rem 1.5rem;
+  text-align: center;
+  color: #fff;
+  border-radius: 0.75rem 0.75rem 0 0;
+}
+
+.el-auth-header h3 {
+  margin: 0;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.el-auth-header p {
+  margin: 0.5rem 0 0;
+  opacity: 0.9;
+  font-size: 0.9rem;
+}
+
+/* Card with top gradient accent */
+.el-card-accent {
+  border-top: 3px solid transparent;
+  border-image: var(--el-gradient) 1;
+}
+
+/* Gradient avatar fallback */
+.el-avatar-gradient {
+  background: var(--el-gradient) !important;
+}
+
+/* Glow card (auth pages) */
+.el-glow {
+  box-shadow: 0 4px 24px rgba(74, 222, 128, 0.15), 0 1px 3px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+}
+
+/* Drop zone */
+.el-drop-zone {
+  border: 2px dashed var(--el-green) !important;
+  border-radius: 0.75rem;
+  background-color: var(--el-green-50);
+  transition: all 0.2s ease;
+}
+
+.el-drop-zone:hover,
+.el-drop-zone.dragging {
+  border-color: var(--el-green-dark) !important;
+  background-color: #dcfce7;
+}
+
+/* Gradient text */
+.el-gradient-text {
+  background: var(--el-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Dashed card border for "add" tiles */
+.border-dashed {
+  border: 2px dashed #d1fae5 !important;
+  transition: border-color 0.2s ease;
+}
+
+.border-dashed:hover {
+  border-color: var(--el-green) !important;
+}
+
+/* Notification unread */
+.list-group-item.bg-light {
+  background-color: var(--el-blue-50) !important;
+}
+
+/* Flashcard gradient back */
+.el-flashcard-back {
+  background: var(--el-gradient);
+  color: #fff;
+}
+
+/* Scrollbar theming */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}

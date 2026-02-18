@@ -2,8 +2,6 @@ import React, { useState, useRef } from 'react';
 import client from '../api/client';
 import type { BulkUploadResult } from '../types';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api';
-
 export default function InviteBulk() {
   const [results, setResults] = useState<BulkUploadResult | null>(null);
   const [error, setError] = useState('');
@@ -59,12 +57,23 @@ export default function InviteBulk() {
               <code> full_name, email, user_type, date_of_birth, phone_number, bio</code>.
               Date format: YYYY-MM-DD. user_type: &quot;student&quot; or &quot;teacher&quot;.
               <br />
-              <a
-                href={`${API_URL}/invitations/download_template/`}
+              <button
+                type="button"
                 className="mt-2 btn btn-sm btn-outline-primary"
+                onClick={async () => {
+                  try {
+                    const res = await client.get('/invitations/download_template/', { responseType: 'blob' });
+                    const url = window.URL.createObjectURL(new Blob([res.data]));
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'invitation_template.csv';
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                  } catch { /* ignore */ }
+                }}
               >
                 Download Template
-              </a>
+              </button>
             </div>
 
             {error && <div className="alert alert-danger">{error}</div>}
@@ -73,8 +82,8 @@ export default function InviteBulk() {
               <div className="mb-3">
                 <label className="form-label">CSV File (.csv)</label>
                 <div
-                  className={`border rounded p-4 text-center ${dragOver ? 'border-primary bg-primary bg-opacity-10' : ''}`}
-                  style={{ cursor: 'pointer', borderStyle: dragOver ? 'solid' : 'dashed' }}
+                  className={`p-4 text-center ${dragOver ? 'el-drop-zone dragging' : 'el-drop-zone'}`}
+                  style={{ cursor: 'pointer' }}
                   onClick={() => fileRef.current?.click()}
                   onDragOver={e => { e.preventDefault(); setDragOver(true); }}
                   onDragEnter={e => { e.preventDefault(); setDragOver(true); }}
@@ -118,7 +127,7 @@ export default function InviteBulk() {
                   )}
                 </div>
               </div>
-              <button type="submit" className="btn btn-primary" disabled={uploading || !selectedFile}>
+              <button type="submit" className="btn btn-primary el-btn-gradient" disabled={uploading || !selectedFile}>
                 {uploading ? 'Uploading...' : 'Upload & Send Invitations'}
               </button>
             </form>

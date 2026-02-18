@@ -17,6 +17,9 @@ interface AuthContextType {
   }) => Promise<void>;
   logout: () => void;
   setAuthFromResponse: (response: AuthResponse) => void;
+  refreshUser: () => Promise<void>;
+  unreadCount: number;
+  setUnreadCount: React.Dispatch<React.SetStateAction<number>>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -24,6 +27,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   const fetchUser = useCallback(async () => {
     const token = localStorage.getItem('auth_token');
@@ -85,6 +89,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         register,
         logout,
         setAuthFromResponse,
+        refreshUser: fetchUser,
+        unreadCount,
+        setUnreadCount,
       }}
     >
       {children}
