@@ -1,0 +1,5 @@
+code,title,description,teacher_username
+CS101,Introduction to Python Programming,Learn the fundamentals of Python programming.,john_teacher
+CS201,Advanced Web Development with Django,Master Django framework for building scalable web applications.,john_teacher
+MATH101,Calculus I,Introduction to differential and integral calculus.,maria_teacher
+CS301,Data Structures and Algorithms,Study fundamental data structures and algorithms.,john_teacher

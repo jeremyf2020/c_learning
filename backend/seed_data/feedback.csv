@@ -1,0 +1,4 @@
+student_username,course_code,rating,comment
+alice_student,CS101,5,Excellent course!
+bob_student,CS101,4,"Great content, needs more exercises."
+charlie_student,MATH101,5,Amazing teacher!

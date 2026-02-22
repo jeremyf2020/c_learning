@@ -1,0 +1,9 @@
+username,email,password,full_name,user_type,bio,phone_number,date_of_birth,is_staff,is_superuser
+admin,admin@elearning.com,admin123,Admin User,teacher,,,,,true,true
+john_teacher,john@elearning.com,teacher123,John Smith,teacher,Experienced computer science professor with 10 years of teaching experience.,+1-555-0101,1980-03-15,false,false
+maria_teacher,maria@elearning.com,teacher123,Maria Garcia,teacher,Mathematics educator passionate about making learning fun and accessible.,+1-555-0102,1985-07-22,false,false
+alice_student,alice@elearning.com,student123,Alice Johnson,student,Computer Science student eager to learn new technologies.,+1-555-0201,2002-01-10,false,false
+bob_student,bob@elearning.com,student123,Bob Williams,student,Passionate about web development and design.,+1-555-0202,2001-05-18,false,false
+charlie_student,charlie@elearning.com,student123,Charlie Brown,student,Mathematics enthusiast and problem solver.,+1-555-0203,2003-11-30,false,false
+diana_student,diana@school.edu,student123,Diana Prince,student,Interested in data science and machine learning.,+1-555-0204,2002-06-14,false,false
+ethan_student,ethan@school.edu,student123,Ethan Hunt,student,Cybersecurity enthusiast.,+1-555-0205,2001-09-03,false,false

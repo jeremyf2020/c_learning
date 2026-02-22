@@ -17,6 +17,7 @@ env/
 db.sqlite3
 db.sqlite3-journal
 media/
+staticfiles/
 *.log
 
 # Environment
@@ -40,5 +41,3 @@ frontend/coverage/
 .DS_Store
 Thumbs.db
 
-# Claude
-.claude/

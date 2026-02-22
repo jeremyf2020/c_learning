@@ -1,0 +1,10 @@
+email,full_name,user_type,date_of_birth,phone_number,bio,invited_by_username,status,created_user_username
+diana@school.edu,Diana Prince,student,2002-06-14,+1-555-0204,Interested in data science and machine learning.,john_teacher,accepted,diana_student
+ethan@school.edu,Ethan Hunt,student,2001-09-03,+1-555-0205,Cybersecurity enthusiast.,john_teacher,accepted,ethan_student
+fiona@school.edu,Fiona Green,student,2003-02-20,+1-555-0206,Aspiring software engineer.,john_teacher,pending,
+george@school.edu,George Martin,student,2002-08-05,+1-555-0207,Loves frontend development.,john_teacher,pending,
+hannah@school.edu,Hannah Lee,student,2003-04-12,+1-555-0208,Math and physics student.,maria_teacher,pending,
+ivan@school.edu,Ivan Petrov,student,2001-12-01,+1-555-0209,Database and backend enthusiast.,maria_teacher,pending,
+julia@school.edu,Julia Roberts,student,2002-10-28,+1-555-0210,Interested in AI and robotics.,john_teacher,pending,
+new_teacher@school.edu,Kevin Chen,teacher,1990-06-15,+1-555-0301,New physics teacher joining next semester.,admin,pending,
+expired_user@school.edu,Old Student,student,2000-01-01,+1-555-0299,This invitation has expired.,john_teacher,expired,

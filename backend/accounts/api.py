@@ -51,7 +51,10 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
     def search(self, request):
         query = request.query_params.get('q', '')
         user_type = request.query_params.get('user_type', '')
-        qs = User.objects.filter(is_blocked=False).exclude(id=request.user.id)
+        include_blocked = request.query_params.get('include_blocked', '').lower() in ('true', '1')
+        qs = User.objects.exclude(id=request.user.id)
+        if not include_blocked:
+            qs = qs.filter(is_blocked=False)
         if query:
             from django.db.models import Q
             qs = qs.filter(Q(username__icontains=query) | Q(full_name__icontains=query) | Q(email__icontains=query))
@@ -80,6 +83,22 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
         user.is_blocked = False
         user.save(update_fields=['is_blocked'])
         return Response({'message': f'{user.username} has been unblocked.'})
+
+    @action(detail=True, methods=['delete'])
+    def delete_user(self, request, pk=None):
+        if not request.user.is_teacher() and not request.user.is_staff:
+            return Response({'error': 'Only teachers can delete users'}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            user = User.objects.get(pk=pk)
+        except User.DoesNotExist:
+            return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+        if user == request.user:
+            return Response({'error': 'You cannot delete yourself'}, status=status.HTTP_400_BAD_REQUEST)
+        if user.is_superuser:
+            return Response({'error': 'Cannot delete a superuser'}, status=status.HTTP_403_FORBIDDEN)
+        username = user.username
+        user.delete()
+        return Response({'message': f'{username} has been deleted.'}, status=status.HTTP_200_OK)
 
 
 class StatusUpdateViewSet(viewsets.ModelViewSet):

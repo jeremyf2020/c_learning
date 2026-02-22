@@ -11,6 +11,7 @@ export default function TeacherHome() {
   const [searchResults, setSearchResults] = useState<User[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [searching, setSearching] = useState(false);
+  const [includeBlocked, setIncludeBlocked] = useState(false);
   const [newStatus, setNewStatus] = useState('');
   const [loading, setLoading] = useState(true);
 
@@ -35,13 +36,15 @@ export default function TeacherHome() {
     setSearching(true);
     const timer = setTimeout(async () => {
       try {
-        const res = await client.get(`/users/search/?q=${encodeURIComponent(searchQuery)}`);
+        const params = new URLSearchParams({ q: searchQuery });
+        if (includeBlocked) params.set('include_blocked', 'true');
+        const res = await client.get(`/users/search/?${params}`);
         setSearchResults(res.data);
       } catch { /* ignore */ }
       setSearching(false);
     }, 300);
     return () => clearTimeout(timer);
-  }, [searchQuery]);
+  }, [searchQuery, includeBlocked]);
 
   const handlePostStatus = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,7 +59,22 @@ export default function TeacherHome() {
   const handleBlock = async (userId: number) => {
     try {
       await client.post(`/users/${userId}/block/`);
-      setSearchResults(searchResults.filter(u => u.id !== userId));
+      setSearchResults(prev => prev.map(u => u.id === userId ? { ...u, is_blocked: true } : u));
+    } catch { /* ignore */ }
+  };
+
+  const handleUnblock = async (userId: number) => {
+    try {
+      await client.post(`/users/${userId}/unblock/`);
+      setSearchResults(prev => prev.map(u => u.id === userId ? { ...u, is_blocked: false } : u));
+    } catch { /* ignore */ }
+  };
+
+  const handleDelete = async (userId: number, username: string) => {
+    if (!window.confirm(`Are you sure you want to delete "${username}"? This cannot be undone.`)) return;
+    try {
+      await client.delete(`/users/${userId}/delete_user/`);
+      setSearchResults(prev => prev.filter(u => u.id !== userId));
     } catch { /* ignore */ }
   };
 
@@ -101,11 +119,23 @@ export default function TeacherHome() {
           <div className="card-body">
             <input
               type="text"
-              className="form-control mb-3"
+              className="form-control mb-2"
               placeholder="Search by name, username, or email..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
             />
+            <div className="form-check mb-3">
+              <input
+                className="form-check-input"
+                type="checkbox"
+                id="includeBlocked"
+                checked={includeBlocked}
+                onChange={e => setIncludeBlocked(e.target.checked)}
+              />
+              <label className="form-check-label small text-muted" htmlFor="includeBlocked">
+                Include blocked users
+              </label>
+            </div>
             {searching && (
               <div className="text-center py-2">
                 <div className="spinner-border spinner-border-sm me-2"></div>
@@ -135,8 +165,16 @@ export default function TeacherHome() {
                           <div>
                             <Link to={`/profile/${u.username}`} className="fw-bold">{u.username}</Link>
                             <span className={`ms-2 badge ${u.user_type === 'teacher' ? 'bg-primary' : 'bg-info'}`}>{u.user_type}</span>
+                            {u.is_blocked && <span className="ms-1 badge bg-danger">Blocked</span>}
                           </div>
-                          <button className="btn btn-sm btn-danger" onClick={() => handleBlock(u.id)}>Block</button>
+                          <div className="d-flex gap-1">
+                            {u.is_blocked ? (
+                              <button className="btn btn-sm btn-success" onClick={() => handleUnblock(u.id)}>Unblock</button>
+                            ) : (
+                              <button className="btn btn-sm btn-warning" onClick={() => handleBlock(u.id)}>Block</button>
+                            )}
+                            <button className="btn btn-sm btn-danger" onClick={() => handleDelete(u.id, u.username)}>Delete</button>
+                          </div>
                         </div>
                         {u.full_name && <div className="small">{u.full_name}</div>}
                         {u.email && <div className="small text-muted">{u.email}</div>}
