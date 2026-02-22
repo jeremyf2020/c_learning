@@ -12,40 +12,27 @@ The application is built as a decoupled, three-tier architecture:
 
 - **Front-end:** A React 18 single-page application (SPA) with TypeScript and Vite, served on port 5173.
 - **Back-end:** A Django 4.2 REST API served via Daphne (ASGI), exposing both HTTP endpoints (Django REST Framework 3.14) and WebSocket endpoints (Django Channels 4), on port 8080.
-- **Data tier:** An SQLite database for persistent storage and a Redis 7 instance as the Django Channels channel layer for real-time message broadcasting.
+- **Data tier:** An SQLite database for persistent storage and a Redis 7 instance serving dual roles as the Django Channels channel layer for real-time message broadcasting and the Celery message broker for asynchronous task processing.
 
-The entire stack is containerised with Docker Compose for reproducible deployment. The report is organised to follow the assessment rubric: it covers the application design, database schema, requirement satisfaction (R1–R5), techniques used, cloud hosting considerations, a critical evaluation, and instructions for running the application.
+The entire stack is containerised with Docker Compose (five services: backend, frontend, Redis, Celery worker, Celery beat scheduler) for reproducible deployment. The report is organised to follow the assessment rubric: it covers the application design, database schema, requirement satisfaction (R1–R5), techniques used, cloud hosting considerations, a critical evaluation, and instructions for running the application.
 
 ---
 
 ## Design
 
-The application follows the Model-View-Controller (MVC) pattern, implemented through Django's convention of Models, Serializers, and ViewSets on the back-end, and React components on the front-end.
+The application follows the Model-View-Controller (MVC) pattern, implemented through Django's convention of Models, Serializers, and ViewSets on the back-end, and React components on the front-end. This section explains the architectural decisions, design patterns, and rationale behind the system's structure.
 
 ### Architecture Overview
 
-```
-┌─────────────────────────────┐
-│     React 18 SPA (Vite)     │  ← Port 5173
-│  TypeScript + Bootstrap 5   │
-│  Axios HTTP / WebSocket     │
-└──────────┬──────────────────┘
-           │  REST API (JSON) + WebSocket
-           ▼
-┌─────────────────────────────┐
-│   Django 4.2 (Daphne/ASGI)  │  ← Port 8080
-│   DRF 3.14 + Channels 4    │
-│   4 Django Apps             │
-└──────┬──────────┬───────────┘
-       │          │
-       ▼          ▼
-┌──────────┐ ┌──────────┐
-│  SQLite  │ │ Redis 7  │  ← Port 6379
-│  (data)  │ │(channels)│
-└──────────┘ └──────────┘
-```
+The system is built as a decoupled client-server application. The front-end is a single-page application (SPA) built with React 18 and TypeScript, served by Vite's development server on port 5173. It communicates with the back-end exclusively through HTTP REST API calls (via Axios) and WebSocket connections — there is no server-side template rendering for user-facing pages. This separation allows the front-end and back-end to be developed, tested, and deployed independently.
 
-The front-end communicates with the back-end exclusively through HTTP REST calls (via Axios) and WebSocket connections — there is no server-side template rendering for user-facing pages. This separation allows the front-end and back-end to be developed, tested, and deployed independently.
+The back-end is a Django 4.2 application served through Daphne, an ASGI server that handles both HTTP and WebSocket traffic on port 8080. It is organised into four Django apps: `accounts` (user models, authentication, invitations), `courses` (course management, materials, assignments, AI generation), `classroom` (real-time WebSocket chat), and `notifications` (in-app notification system with email delivery). Django REST Framework provides the REST API layer, while Django Channels enables WebSocket support for the live classroom feature.
+
+Asynchronous task processing is handled by Celery 5.3.6, with a dedicated worker process that executes long-running operations such as sending notification emails, sending invitation emails, and generating AI-powered assignments via the OpenAI API. A separate Celery Beat process acts as a periodic task scheduler, using `django-celery-beat`'s `DatabaseScheduler` to store schedules in the Django database rather than in a static configuration file. Both the Celery worker and Celery Beat connect to Redis as their message broker.
+
+Redis serves a dual role in the architecture: it acts as the Celery message broker for task queuing and as the Django Channels channel layer for WebSocket message routing. This consolidation avoids the need for a separate message-queue service and keeps the infrastructure simple.
+
+The entire stack is orchestrated with Docker Compose, which defines five services: `backend` (Django/Daphne), `frontend` (React/Vite), `redis`, `celery_worker`, and `celery_beat`. Each service runs in its own container, and the `backend`, `celery_worker`, and `celery_beat` containers all share the same Docker image built from the `backend/` directory, differing only in their startup command.
 
 ### Technology Stack
 
@@ -62,6 +49,9 @@ The front-end communicates with the back-end exclusively through HTTP REST calls
 | WebSocket Support | Django Channels | 4.0.0 |
 | ASGI Server | Daphne | 4.0.0 |
 | Channel Layer | channels-redis | 4.1.0 |
+| Task Queue | Celery | 5.3.6 |
+| Task Scheduler | django-celery-beat | 2.5.0 |
+| Task Results | django-celery-results | 2.5.1 |
 | Image Processing | Pillow | 10.2.0 |
 | PDF Extraction | pypdf | 4.1.0 |
 | CORS | django-cors-headers | 4.3.1 |
@@ -72,16 +62,79 @@ The front-end communicates with the back-end exclusively through HTTP REST calls
 
 ### Back-end App Structure
 
-The Django back-end is modular, organised into four apps:
+The Django back-end is modular, organised into four apps under the `core/` project configuration package:
 
 | App | Responsibility |
 |-----|---------------|
 | `accounts` | User model, authentication, registration, invitations, status updates, profile management |
-| `courses` | Course CRUD, materials upload, enrollment, feedback, AI-generated assignments |
+| `courses` | Course CRUD, materials upload, enrollment, feedback, AI-generated assignments (via Celery) |
 | `classroom` | Real-time chat rooms, shared whiteboard, audio streaming via WebSockets |
-| `notifications` | In-app notification management and email delivery |
+| `notifications` | In-app notification management, asynchronous email delivery (via Celery) |
 
-Each app follows the pattern: `models.py` → `serializers.py` → `api.py` (ViewSets) → `urls.py`, with forms in `forms.py` for server-side rendered views.
+Each app follows a consistent three-layer pattern: `models.py` → `serializers.py` → `api.py` (ViewSets). This layered approach separates data definition (models), data transformation (serializers), and business logic (ViewSets), making each layer independently testable and replaceable. Apps that require background processing also include a `tasks.py` module containing Celery shared tasks.
+
+### API Design
+
+The REST API is designed around **resources as nouns** with **HTTP methods as verbs**, following RESTful conventions. Django REST Framework's `DefaultRouter` auto-generates URL endpoints for each ViewSet, producing a consistent and predictable URL structure (e.g., `/api/courses/`, `/api/users/`).
+
+Beyond standard CRUD, domain-specific operations are exposed as **custom ViewSet actions** using the `@action` decorator. For example, enrolling in a course is `POST /api/courses/{id}/enroll/` rather than creating a separate `/api/enrollments/` endpoint with a course ID in the body. This keeps related logic co-located and produces intuitive, self-documenting URLs.
+
+**Token authentication** was chosen over JWT for its simplicity and instant revocability. Database-backed tokens can be deleted to immediately invalidate a session, whereas JWTs remain valid until expiration unless a server-side blacklist is maintained — negating the stateless advantage that motivates JWT adoption. For a classroom-scale application, the marginal database lookup per request is an acceptable trade-off for simpler session management.
+
+**Permission enforcement** operates at three levels:
+1. **Class-level:** Custom `IsTeacher` permission class restricts entire ViewSets to teacher accounts.
+2. **Object-level:** `perform_create()`, `perform_update()`, and `perform_destroy()` check ownership before allowing mutations — for example, only the course teacher can modify their own course.
+3. **Queryset-level:** `get_queryset()` methods scope data visibility by role — students only see assignments for courses they are enrolled in, and teachers only see data for their own courses.
+
+### Real-time Design (WebSocket Architecture)
+
+The real-time classroom feature uses Django Channels 4 with an `AsyncWebsocketConsumer`, chosen over polling or Server-Sent Events because WebSockets provide full-duplex communication with lower latency — essential for synchronized whiteboard drawing and audio streaming.
+
+**Protocol routing:** The ASGI configuration (`core/asgi.py`) uses Channels' `ProtocolTypeRouter` to split incoming connections: HTTP requests are routed to Django's standard ASGI handler, while WebSocket connections are routed through a custom `TokenAuthMiddleware` to the Channels URL router. This allows both protocols to share the same port (8080) and Docker service.
+
+**WebSocket authentication** required custom middleware because the browser's WebSocket API does not support custom HTTP headers during the handshake (unlike regular HTTP requests). The `TokenAuthMiddleware` extracts the DRF auth token from the WebSocket query string (`?token=...`) and attaches the authenticated user to the connection scope. This provides the same authentication guarantee as the REST API while working within the constraints of the WebSocket protocol.
+
+**Message multiplexing:** A single WebSocket connection per room handles all real-time features: chat messages, whiteboard drawing commands (pen, line, text, eraser, move, undo, clear), and audio data streams. Each message carries a `type` field that the consumer dispatches to the appropriate handler. This avoids the overhead and complexity of maintaining multiple WebSocket connections per user.
+
+**Channel groups via Redis:** The Redis channel layer enables broadcasting messages to all participants in a room via `group_send()`. When a user draws on the whiteboard, the coordinates are sent to the server, which broadcasts them to the entire channel group. This architecture supports horizontal scaling — multiple Daphne workers can share the same Redis channel layer, allowing real-time features to work across multiple server instances.
+
+**Coordinate normalisation:** Whiteboard drawing coordinates are normalised to the 0–1 range before transmission, decoupling the drawing data from the client's screen resolution. This ensures that a drawing created on a 1920×1080 display renders correctly on a 1366×768 laptop or a mobile device.
+
+### Asynchronous Task Processing (Celery)
+
+The application uses Celery 5.3 with Redis as the message broker (shared with Django Channels) for asynchronous task processing. Three categories of work are offloaded from the HTTP request-response cycle:
+
+1. **Email delivery** (`notifications/tasks.py`): All email sending — notification emails, bulk notification emails, and invitation emails — is dispatched to Celery workers via `.delay()`. This prevents SMTP latency (typically 1–3 seconds per email) from blocking API responses. For bulk operations like CSV invitation upload, where a single request may trigger dozens of emails, this is particularly important.
+
+2. **AI assignment generation** (`courses/tasks.py`): The OpenAI API call for quiz/flashcard generation has a 60-second timeout and unpredictable latency. The `generate_assignment_task` Celery task handles the entire pipeline — building the AI prompt, calling the OpenAI API, parsing the JSON response, creating the `Assignment` database record, and sending deadline notifications. The API endpoint returns `HTTP 202 Accepted` with a `task_id` immediately, rather than blocking the teacher's browser for up to 60 seconds.
+
+3. **Scheduled tasks** (`celery_beat`): The Celery Beat scheduler, backed by `django-celery-beat`'s `DatabaseScheduler`, enables periodic task scheduling configurable through the Django admin interface. This supports future requirements such as invitation expiration cleanup or deadline reminder emails.
+
+**Broker choice:** Redis was selected over RabbitMQ because it was already deployed as the Django Channels channel layer. Using a single Redis instance for both Channels and Celery reduces operational complexity — one fewer service to deploy, monitor, and maintain. Task results are stored in the Django database via `django-celery-results`, allowing inspection through the Django admin.
+
+**Docker service topology:** Celery runs as two additional Docker Compose services (`celery_worker` and `celery_beat`) sharing the same backend Docker image but with different entrypoint commands. Both services mount the same code volume as the backend, ensuring they always run the same version of the application code.
+
+### Front-end Architecture
+
+The React SPA follows a **component hierarchy** of `App` → `Layout` (with conditional `Navbar`) → `Pages`, with 14 page components covering all application features.
+
+**State management:** The `AuthContext` (React Context API) provides global authentication state — `user`, `login()`, `logout()`, `refreshUser()`, and `unreadCount` — to all components via the `useAuth()` hook. Redux was deliberately not adopted because the application's global state consists solely of authentication data. Context API is the idiomatic React solution for single-concern global state, avoiding the boilerplate of actions, reducers, and a store that Redux requires.
+
+**Route protection:** The `ProtectedRoute` component wraps authenticated routes, checking the `AuthContext` user state and optionally verifying `requiredType` (student or teacher). Unauthenticated users are redirected to `/login`. This centralises access control in the router rather than duplicating checks in each page component.
+
+**API layer:** A single Axios instance (`api/client.ts`) is configured with a request interceptor that automatically attaches the auth token from `localStorage` to every request. This eliminates repetitive token handling across the 14 page components and ensures consistent authentication headers.
+
+**Theming:** A custom CSS file (`theme.css`) overrides Bootstrap 5 defaults using CSS custom properties (variables). The green-to-blue gradient theme and custom component styling are achieved entirely through variable redefinition (e.g., `--bs-primary`, `--bs-body-bg`) rather than modifying Bootstrap source files. This approach allows theme updates by changing a single variable value, with changes cascading throughout the application.
+
+### Key Design Decisions
+
+**Why Django + React (not Django templates):** The SPA architecture provides a significantly better user experience for the real-time classroom feature. Django template rendering would require full page reloads for navigation, interrupting WebSocket connections. A React SPA maintains persistent WebSocket connections across route changes and provides instant navigation between pages. The trade-off is increased initial complexity (two build systems, CORS configuration, token auth), but the resulting UX for real-time features justifies this cost.
+
+**Why SQLite (not PostgreSQL):** SQLite was chosen for development simplicity — no database server to configure or maintain. The application supports PostgreSQL via environment variables (`DB_ENGINE`, `DB_NAME`) without code changes, making migration straightforward for production deployment.
+
+**Why CSV-based seeding (not Django fixtures):** The `populate_db` management command reads seed data from six CSV files rather than Django JSON fixtures. CSV files are human-readable and editable with any spreadsheet application, making it easy for non-developers to modify demo data. The command is idempotent — it skips records that already exist.
+
+**Why explicit notification calls (not Django signals):** Notification creation uses explicit utility function calls (`create_notification()`, `create_bulk_notifications()`) at each trigger point rather than Django signals. This makes notification logic visible at the call site, easier to debug, and allows passing contextual information (custom messages, links). This follows the Python principle "explicit is better than implicit."
 
 ---
 
@@ -386,7 +439,7 @@ Constraint: `unique_together('assignment', 'student')`
 
 ```
 claude_elearning/
-├── docker-compose.yml              # Docker orchestration (4 services)
+├── docker-compose.yml              # Docker orchestration (5 services)
 ├── .env                            # Environment variables
 ├── .gitignore
 │
@@ -396,11 +449,12 @@ claude_elearning/
 │   ├── requirements.txt            # Python dependencies
 │   ├── db.sqlite3                  # SQLite database
 │   │
-│   ├── elearning_project/          # Django project configuration
-│   │   ├── settings.py             # Settings (DB, CORS, Channels, Email)
+│   ├── core/                       # Django project configuration
+│   │   ├── settings.py             # Settings (DB, CORS, Channels, Celery, Email)
 │   │   ├── urls.py                 # Root URL routing
 │   │   ├── asgi.py                 # ASGI config (HTTP + WebSocket routing)
-│   │   └── wsgi.py                 # WSGI config (fallback)
+│   │   ├── wsgi.py                 # WSGI config (fallback)
+│   │   └── celery.py               # Celery app configuration
 │   │
 │   ├── accounts/                   # User management app
 │   │   ├── models.py               # User, StatusUpdate, Invitation models
@@ -412,12 +466,13 @@ claude_elearning/
 │   │   ├── tests.py                # 79 test methods
 │   │   ├── admin.py                # Admin registration
 │   │   ├── migrations/             # Database migrations
-│   │   └── management/commands/    # populate_db, generate_sample_csv
+│   │   └── management/commands/    # populate_db
 │   │
 │   ├── courses/                    # Course management app
 │   │   ├── models.py               # Course, Material, Enrollment, etc.
 │   │   ├── api.py                  # REST ViewSets + custom actions
 │   │   ├── serializers.py          # 6 serializers
+│   │   ├── tasks.py                # Celery task: AI assignment generation
 │   │   ├── views.py                # Server-side rendered views
 │   │   ├── forms.py                # Course, Material, Feedback forms
 │   │   ├── urls.py                 # App URL patterns
@@ -438,6 +493,7 @@ claude_elearning/
 │   │   ├── models.py               # Notification model
 │   │   ├── api.py                  # REST ViewSet
 │   │   ├── serializers.py          # 1 serializer
+│   │   ├── tasks.py                # Celery tasks: async email delivery
 │   │   ├── utils.py                # create_notification, create_bulk_notifications
 │   │   ├── tests.py                # 13 test methods
 │   │   └── migrations/             # Database migrations
@@ -538,7 +594,7 @@ Users can self-register through the public registration form at `/register`.
 Users can also create accounts through invitation links sent by teachers:
 
 - **Teacher creates invitation:** Via `POST /api/invitations/` with the invitee's email, full name, user type (student or teacher), and optional details. A unique 48-character URL-safe token is generated (`secrets.token_urlsafe(48)`) with a 30-day expiration.
-- **Email sent:** The system sends an email with an invitation link (`/invite/{token}`) using Django's `send_mail()`.
+- **Email sent:** The system sends an email asynchronously via Celery's `send_invitation_email.delay()` with an invitation link (`/invite/{token}`).
 - **Invitee accepts:** At `/invite/{token}`, the `AcceptInvitation.tsx` page validates the token via `GET /api/invite/{token}/`, displays pre-filled details (name, email, role), and requires only a username and password.
 - **Account created:** `POST /api/invite/{token}/accept/` creates the user with invitation data, marks the invitation as `'accepted'`, and returns an auth token.
 - **Bulk invitations:** Teachers can upload a CSV file via `POST /api/invitations/bulk_upload/` to invite multiple users at once, with per-row validation and error reporting.
@@ -693,7 +749,7 @@ Similarly, notifications are sent when students unenrol, are blocked, or are man
 
 When a teacher uploads material via `POST /api/materials/`, `create_bulk_notifications()` is called:
 - Creates in-app `Notification` records for all actively enrolled students.
-- Sends emails to all enrolled students efficiently using Django's `send_mass_mail()` (single SMTP connection).
+- Sends emails to all enrolled students asynchronously via Celery's `send_bulk_notification_emails.delay()`.
 - Notification type: `'material'`, with the message "New material in {course.code}".
 
 **Full notification trigger points:**
@@ -926,17 +982,19 @@ This section highlights techniques used in the project, including those beyond t
 
 6. **OpenAI API Integration** — AI-powered automatic quiz and flashcard generation from uploaded PDF materials. Text is extracted via `pypdf`, structured prompts are sent to GPT-3.5-turbo, and JSON responses are parsed into auto-gradeable assignments stored in Django's `JSONField`.
 
-7. **Docker Compose** — Containerised development and deployment with four services (Python, Node, Redis, MailHog), volume mounts for live development, and `.dockerignore` files for optimised build contexts.
+7. **Celery with Redis** — Asynchronous task processing using Celery 5.3 with Redis as the message broker (shared with Django Channels). Email delivery and OpenAI API calls are offloaded to background workers via `.delay()`, preventing SMTP latency and long-running AI requests from blocking HTTP responses. Celery Beat provides periodic task scheduling via the Django admin.
 
-8. **CSS Custom Properties Theming** — A branded visual theme built entirely with CSS custom properties overriding Bootstrap defaults, demonstrating modern CSS theming without modifying framework source files.
+8. **Docker Compose** — Containerised development and deployment with five services (Django/Daphne, React/Vite, Redis, Celery Worker, Celery Beat), volume mounts for live development, and `.dockerignore` files for optimised build contexts.
 
-9. **React Context API** — Global authentication state management via `AuthContext` with the `useContext` hook, providing `user`, `login`, `logout`, and `refreshUser` across all components.
+9. **CSS Custom Properties Theming** — A branded visual theme built entirely with CSS custom properties overriding Bootstrap defaults, demonstrating modern CSS theming without modifying framework source files.
 
-10. **Dual-Channel Notification System** — Centralised utility functions combining in-app notifications with email delivery via Django's `send_mail`/`send_mass_mail`, with graceful error handling and logging.
+10. **React Context API** — Global authentication state management via `AuthContext` with the `useContext` hook, providing `user`, `login`, `logout`, and `refreshUser` across all components.
 
-11. **OpenAPI / Swagger Documentation** — Automatic API documentation generated by `drf-spectacular` from existing ViewSet and serializer definitions, providing interactive Swagger UI and ReDoc interfaces without manual documentation maintenance.
+11. **Dual-Channel Notification System** — Centralised utility functions combining in-app notifications with email delivery via Django's `send_mail`/`send_mass_mail`, with graceful error handling and logging.
 
-12. **Token Authentication with WebSocket Middleware** — Custom middleware for WebSocket authentication since WebSocket connections cannot send custom HTTP headers during the handshake. The token is passed via query string and validated against the DRF Token model.
+12. **OpenAPI / Swagger Documentation** — Automatic API documentation generated by `drf-spectacular` from existing ViewSet and serializer definitions, providing interactive Swagger UI and ReDoc interfaces without manual documentation maintenance.
+
+13. **Token Authentication with WebSocket Middleware** — Custom middleware for WebSocket authentication since WebSocket connections cannot send custom HTTP headers during the handshake. The token is passed via query string and validated against the DRF Token model.
 
 ---
 
@@ -987,7 +1045,7 @@ The application is designed for deployment on AWS using the following architectu
 
 2. **Back-end (ECS Fargate):**
    - Build the Docker image from the backend `Dockerfile` and push it to Amazon ECR (Elastic Container Registry).
-   - Create an ECS Fargate service using the Docker image, running `daphne -b 0.0.0.0 -p 8080 elearning_project.asgi:application`.
+   - Create an ECS Fargate service using the Docker image, running `daphne -b 0.0.0.0 -p 8080 core.asgi:application`.
    - Place the service behind an Application Load Balancer (ALB) with:
      - HTTP listener redirecting to HTTPS.
      - HTTPS listener forwarding to the ECS target group.
@@ -1054,7 +1112,7 @@ The application is designed for deployment on AWS using the following architectu
 
 5. **Front-end component complexity:** The Classroom component is approximately 900 lines. Extracting custom hooks (`useWebSocket`, `useWhiteboard`, `useAudioStream`) would improve readability and testability.
 
-6. **No Celery for background tasks:** Email sending is synchronous. For production, Celery with Redis as a broker would handle email delivery, PDF processing, and CSV uploads asynchronously without blocking API responses.
+6. **No periodic cleanup tasks:** While Celery Beat is configured, no periodic tasks are currently defined. Expired invitations and old notifications could benefit from automatic cleanup via scheduled Celery tasks.
 
 ### Comparison of Approaches
 
@@ -1082,11 +1140,12 @@ The application is designed for deployment on AWS using the following architectu
 unzip claude_elearning.zip
 cd claude_elearning
 
-# 2. Start all services (backend, frontend, redis, mailhog)
+# 2. Start all services (backend, frontend, redis, celery_worker, celery_beat)
 docker compose up --build
 
 # 3. (First run only) Run migrations and populate demo data
 docker compose exec backend python manage.py migrate
+docker compose exec backend python manage.py collectstatic --noinput
 docker compose exec backend python manage.py populate_db
 
 # 4. Access the application
@@ -1095,7 +1154,6 @@ docker compose exec backend python manage.py populate_db
 # Django Admin: http://localhost:8080/admin/
 # Swagger Docs: http://localhost:8080/api/docs/
 # ReDoc:        http://localhost:8080/api/redoc/
-# MailHog UI:   http://localhost:8025 (local email testing)
 ```
 
 ### Login Credentials
@@ -1156,6 +1214,9 @@ docker compose exec frontend npx jest --passWithNoTests
 | django-extensions | 4.1 |
 | pydotplus | 2.0.2 |
 | drf-spectacular | 0.28.0 |
+| celery | 5.3.6 |
+| django-celery-beat | 2.5.0 |
+| django-celery-results | 2.5.1 |
 
 **Front-end (package.json):**
 
@@ -1179,9 +1240,9 @@ Key achievements include:
 
 - **All 12 functional requirements (R1a–l)** are satisfied, including real-time chat with a shared whiteboard and audio streaming, AI-powered assignment generation, and a dual-channel notification system.
 - **All 5 technical requirements (R2–R5)** are met, with proper use of models, forms, serializers, DRF, URL routing, SQLite, REST API design, and comprehensive testing (132 back-end tests + 11 front-end test files).
-- **Advanced techniques** beyond the course syllabus: React with TypeScript, Django Channels with WebSockets, HTML5 Canvas, Web Audio API, OpenAI API integration, Docker containerisation, and auto-generated API documentation.
+- **Advanced techniques** beyond the course syllabus: React with TypeScript, Django Channels with WebSockets, Celery for asynchronous task processing, HTML5 Canvas, Web Audio API, OpenAI API integration, Docker containerisation, and auto-generated API documentation.
 
-The application is containerised for reproducible deployment and has been designed with scalability in mind — stateless API authentication, Redis-backed WebSocket messaging, and configurable database engines support future migration to cloud infrastructure such as AWS.
+The application is containerised for reproducible deployment and has been designed with scalability in mind — stateless API authentication, Redis-backed WebSocket messaging, Celery-based asynchronous task processing, and configurable database engines support future migration to cloud infrastructure such as AWS.
 
 ---
 
@@ -1201,3 +1262,4 @@ The application is containerised for reproducible deployment and has been design
 12. Microsoft. *TypeScript Documentation*. https://www.typescriptlang.org/docs/
 13. Amazon Web Services. *AWS Documentation*. https://docs.aws.amazon.com/
 14. Tom Christie. *drf-spectacular Documentation*. https://drf-spectacular.readthedocs.io/
+15. Celery Project. *Celery Documentation*. https://docs.celeryq.dev/

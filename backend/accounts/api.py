@@ -1,8 +1,6 @@
 from datetime import timedelta
 
 from django.contrib.auth import authenticate
-from django.core.mail import send_mail
-from django.conf import settings
 from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import viewsets, permissions, status
@@ -10,6 +8,8 @@ from rest_framework.authtoken.models import Token
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.response import Response
+
+from notifications.tasks import send_invitation_email
 
 from .models import User, StatusUpdate, Invitation
 from .serializers import (
@@ -125,7 +125,7 @@ class InvitationViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         invitation = serializer.save(invited_by=self.request.user)
-        _send_invitation_email(invitation, self.request)
+        send_invitation_email.delay(invitation.pk)
 
     @action(detail=True, methods=['post'])
     def resend(self, request, pk=None):
@@ -138,7 +138,7 @@ class InvitationViewSet(viewsets.ModelViewSet):
         invitation.expires_at = timezone.now() + timedelta(days=30)
         invitation.status = 'pending'
         invitation.save(update_fields=['expires_at', 'status'])
-        _send_invitation_email(invitation, request)
+        send_invitation_email.delay(invitation.pk)
         return Response({'detail': f'Invitation resent to {invitation.email}.'})
 
     @action(detail=False, methods=['post'], parser_classes=[MultiPartParser])
@@ -282,32 +282,6 @@ def auth_me(request):
 
 # ---------- Helper functions ----------
 
-def _send_invitation_email(invitation, request):
-    frontend_base = settings.CORS_ALLOWED_ORIGINS[0] if settings.CORS_ALLOWED_ORIGINS else 'http://localhost:5173'
-    invite_url = f"{frontend_base}/invite/{invitation.token}"
-
-    subject = 'You have been invited to the eLearning Platform'
-    message = (
-        f"Hello {invitation.full_name or 'there'},\n\n"
-        f"You have been invited to join the eLearning Platform "
-        f"as a {invitation.get_user_type_display()} "
-        f"by {invitation.invited_by.full_name or invitation.invited_by.username}.\n\n"
-        f"Click the following link to complete your registration:\n"
-        f"{invite_url}\n\n"
-        f"This link will expire on {invitation.expires_at.strftime('%B %d, %Y')}.\n\n"
-        f"If you did not expect this invitation, you can ignore this email.\n\n"
-        f"Best regards,\n"
-        f"eLearning Platform"
-    )
-    send_mail(
-        subject,
-        message,
-        settings.DEFAULT_FROM_EMAIL,
-        [invitation.email],
-        fail_silently=True,
-    )
-
-
 def _process_csv_upload(csv_file, invited_by, request):
     import csv as csv_mod
     import io
@@ -386,7 +360,7 @@ def _process_csv_upload(csv_file, invited_by, request):
             bio=bio,
         )
         invitation.save()
-        _send_invitation_email(invitation, request)
+        send_invitation_email.delay(invitation.pk)
         results['success'].append({'row': row_num, 'email': email})
 
     return results

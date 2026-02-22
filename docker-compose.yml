@@ -21,6 +21,25 @@ services:
       - ./frontend:/app
       - /app/node_modules
 
+  celery_worker:
+    build: ./backend
+    command: celery -A core worker -l info
+    env_file: .env
+    depends_on:
+      - redis
+    volumes:
+      - ./backend:/app
+      - media_data:/app/media
+
+  celery_beat:
+    build: ./backend
+    command: celery -A core beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    env_file: .env
+    depends_on:
+      - redis
+    volumes:
+      - ./backend:/app
+
   redis:
     image: redis:7-alpine
     ports:

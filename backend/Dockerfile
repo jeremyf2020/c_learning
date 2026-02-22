@@ -11,4 +11,4 @@ COPY . .
 
 EXPOSE 8080
 
-CMD ["daphne", "-b", "0.0.0.0", "-p", "8080", "elearning_project.asgi:application"]
+CMD ["daphne", "-b", "0.0.0.0", "-p", "8080", "core.asgi:application"]

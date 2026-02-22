@@ -1,15 +1,15 @@
 import logging
 
 from django.conf import settings
-from django.core.mail import send_mail, send_mass_mail
 
 from .models import Notification
+from .tasks import send_notification_email, send_bulk_notification_emails
 
 logger = logging.getLogger(__name__)
 
 
 def create_notification(*, recipient, notification_type, title, message, link=''):
-    """Create an in-app notification and send a corresponding email."""
+    """Create an in-app notification and send a corresponding email via Celery."""
     notification = Notification.objects.create(
         recipient=recipient,
         notification_type=notification_type,
@@ -19,22 +19,13 @@ def create_notification(*, recipient, notification_type, title, message, link=''
     )
 
     if recipient.email:
-        try:
-            send_mail(
-                subject=title,
-                message=message,
-                from_email=settings.DEFAULT_FROM_EMAIL,
-                recipient_list=[recipient.email],
-                fail_silently=True,
-            )
-        except Exception:
-            logger.exception('Failed to send notification email to %s', recipient.email)
+        send_notification_email.delay(title, message, recipient.email)
 
     return notification
 
 
 def create_bulk_notifications(*, recipients, notification_type, title, message, link=''):
-    """Create in-app notifications for multiple recipients and send emails."""
+    """Create in-app notifications for multiple recipients and send emails via Celery."""
     notifications = []
     email_messages = []
 
@@ -50,13 +41,10 @@ def create_bulk_notifications(*, recipients, notification_type, title, message, 
 
         if recipient.email:
             email_messages.append(
-                (title, message, settings.DEFAULT_FROM_EMAIL, [recipient.email])
+                [title, message, settings.DEFAULT_FROM_EMAIL, [recipient.email]]
             )
 
     if email_messages:
-        try:
-            send_mass_mail(email_messages, fail_silently=True)
-        except Exception:
-            logger.exception('Failed to send bulk notification emails for: %s', title)
+        send_bulk_notification_emails.delay(email_messages)
 
     return notifications

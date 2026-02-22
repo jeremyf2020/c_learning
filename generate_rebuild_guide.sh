@@ -21,7 +21,7 @@ Follow each step in order. Copy each code block into the specified file path.
 Create the root project directory and all subdirectories:
 
 ```bash
-mkdir -p elearning/backend/elearning_project
+mkdir -p elearning/backend/core
 mkdir -p elearning/backend/accounts/management/commands
 mkdir -p elearning/backend/accounts/migrations
 mkdir -p elearning/backend/courses/migrations
@@ -190,45 +190,58 @@ docker compose build
 
 ---
 
-## Step 2: Django Project Configuration
+## Step 2: Django Project Configuration (backend/core/)
 
-### 2.1 `backend/elearning_project/__init__.py`
-```python
-# Empty file — just create it
-```
-
-### 2.2 `backend/elearning_project/settings.py`
+### 2.1 `backend/core/__init__.py`
 SECTION
 
 echo '```python'
-cat backend/elearning_project/settings.py
+cat backend/core/__init__.py
 echo '```'
 
 cat << 'SECTION'
 
-### 2.3 `backend/elearning_project/wsgi.py`
+### 2.2 `backend/core/celery.py`
 SECTION
 
 echo '```python'
-cat backend/elearning_project/wsgi.py
+cat backend/core/celery.py
 echo '```'
 
 cat << 'SECTION'
 
-### 2.4 `backend/elearning_project/asgi.py`
+### 2.3 `backend/core/settings.py`
 SECTION
 
 echo '```python'
-cat backend/elearning_project/asgi.py
+cat backend/core/settings.py
 echo '```'
 
 cat << 'SECTION'
 
-### 2.5 `backend/elearning_project/urls.py`
+### 2.4 `backend/core/wsgi.py`
 SECTION
 
 echo '```python'
-cat backend/elearning_project/urls.py
+cat backend/core/wsgi.py
+echo '```'
+
+cat << 'SECTION'
+
+### 2.5 `backend/core/asgi.py`
+SECTION
+
+echo '```python'
+cat backend/core/asgi.py
+echo '```'
+
+cat << 'SECTION'
+
+### 2.6 `backend/core/urls.py`
+SECTION
+
+echo '```python'
+cat backend/core/urls.py
 echo '```'
 
 cat << 'SECTION'
@@ -342,7 +355,16 @@ echo '```'
 
 cat << 'SECTION'
 
-### 4.5 `backend/courses/admin.py`
+### 4.5 `backend/courses/tasks.py` (Celery task for AI assignment generation)
+SECTION
+
+echo '```python'
+cat backend/courses/tasks.py
+echo '```'
+
+cat << 'SECTION'
+
+### 4.6 `backend/courses/admin.py`
 SECTION
 
 echo '```python'
@@ -482,7 +504,16 @@ echo '```'
 
 cat << 'SECTION'
 
-### 6.5 `backend/notifications/utils.py`
+### 6.5 `backend/notifications/tasks.py` (Celery tasks for async email)
+SECTION
+
+echo '```python'
+cat backend/notifications/tasks.py
+echo '```'
+
+cat << 'SECTION'
+
+### 6.6 `backend/notifications/utils.py`
 SECTION
 
 echo '```python'
@@ -491,7 +522,7 @@ echo '```'
 
 cat << 'SECTION'
 
-### 6.6 `backend/notifications/admin.py`
+### 6.7 `backend/notifications/admin.py`
 SECTION
 
 echo '```python'
@@ -830,9 +861,18 @@ cat << 'SECTION'
 ### Checkpoint 4 — Full Application
 ```bash
 docker compose up -d
-# Wait for all services to start
+# Wait for all 5 services to start (backend, frontend, redis, celery_worker, celery_beat)
+docker compose ps
 # Visit http://localhost:5173 — should show the login page
 # Log in with: john_teacher / teacher123 (or any user from seed data)
+```
+
+### Checkpoint 5 — Verify Celery
+```bash
+docker compose logs celery_worker
+# Should show: "celery@... ready." and list discovered tasks
+docker compose logs celery_beat
+# Should show: "beat: Starting..."
 ```
 
 ---
@@ -853,6 +893,7 @@ Test these features after the full build:
 10. **Quiz/Flashcards** — Take a quiz or flip flashcards if assignments exist
 11. **Profile** — Edit profile, upload photo, view deadlines
 12. **Django Admin** — Visit http://localhost:8080/admin/ with `admin` / `admin123`
+13. **Celery Tasks** — Check `docker compose logs celery_worker` after sending an invitation or enrolling — emails should appear as processed tasks
 
 ---
 
@@ -887,6 +928,19 @@ Frontend (React 18 + TypeScript)     Backend (Django 4.2 + DRF)
 │ React Router 6              │     │ Token Authentication         │
 │ WebSocket (Classroom)    ───┼──→  │ WebSocket Consumer           │
 └─────────────────────────────┘     └──────────────────────────────┘
-                                     Docker Compose: backend + frontend + redis
+          │                           │               │
+          │                           ▼               ▼
+          │                    ┌─────────────┐ ┌─────────────┐
+          │                    │ Celery       │ │ Celery Beat │
+          │                    │ Worker       │ │ (Scheduler) │
+          │                    │ - Emails     │ │             │
+          │                    │ - AI Tasks   │ │             │
+          │                    └──────┬───────┘ └──────┬──────┘
+          │                           │                │
+          │                           ▼                ▼
+          │                    ┌──────────────────────────┐
+          └────────────────────│       Redis (Broker)     │
+                               └──────────────────────────┘
+         Docker Compose: backend + frontend + redis + celery_worker + celery_beat
 ```
 SECTION

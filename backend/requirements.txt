@@ -10,3 +10,6 @@ pypdf==4.1.0
 django-extensions==4.1
 pydotplus==2.0.2
 drf-spectacular==0.28.0
+celery==5.3.6
+django-celery-beat==2.5.0
+django-celery-results==2.5.1

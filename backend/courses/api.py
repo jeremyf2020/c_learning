@@ -1,16 +1,13 @@
-import json
 import logging
-import urllib.request
-import urllib.error
 
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser, JSONParser
 from rest_framework.response import Response
 
-from django.utils.dateparse import parse_datetime
 from notifications.utils import create_notification, create_bulk_notifications
 from accounts.models import User
+from .tasks import generate_assignment_task
 from .models import Course, CourseMaterial, Enrollment, Feedback, Assignment, AssignmentSubmission
 from .serializers import (
     CourseSerializer, CourseMaterialSerializer, EnrollmentSerializer, FeedbackSerializer,
@@ -255,32 +252,6 @@ def _extract_pdf_text(file_obj):
     return '\n'.join(text_parts)
 
 
-def _call_openai_api(api_key, prompt, model='gpt-3.5-turbo'):
-    """Call OpenAI Chat Completions API and return the response text."""
-    url = 'https://api.openai.com/v1/chat/completions'
-    headers = {
-        'Content-Type': 'application/json',
-        'Authorization': f'Bearer {api_key}',
-    }
-    payload = json.dumps({
-        'model': model,
-        'messages': [{'role': 'user', 'content': prompt}],
-        'temperature': 0.7,
-    }).encode('utf-8')
-
-    req = urllib.request.Request(url, data=payload, headers=headers, method='POST')
-    try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            data = json.loads(resp.read().decode('utf-8'))
-            return data['choices'][0]['message']['content']
-    except urllib.error.HTTPError as e:
-        body = e.read().decode('utf-8', errors='replace')
-        logger.error('OpenAI API error %s: %s', e.code, body)
-        raise ValueError(f'OpenAI API error ({e.code}): {body}')
-    except urllib.error.URLError as e:
-        raise ValueError(f'Could not reach OpenAI API: {e.reason}')
-
-
 class AssignmentViewSet(viewsets.ModelViewSet):
     serializer_class = AssignmentSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -344,7 +315,7 @@ class AssignmentViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'])
     def generate(self, request):
-        """Upload a PDF and generate a quiz or flashcard set using OpenAI."""
+        """Upload a PDF and generate a quiz or flashcard set using OpenAI via Celery."""
         if not request.user.is_teacher():
             return Response({'error': 'Only teachers can generate assignments'}, status=status.HTTP_403_FORBIDDEN)
 
@@ -365,7 +336,6 @@ class AssignmentViewSet(viewsets.ModelViewSet):
         assignment_type = request.data.get('assignment_type', 'quiz')
         title = request.data.get('title', '')
         deadline_str = request.data.get('deadline')
-        deadline_val = parse_datetime(deadline_str) if deadline_str else None
 
         if not course_id:
             return Response({'error': 'course is required.'}, status=status.HTTP_400_BAD_REQUEST)
@@ -378,7 +348,7 @@ class AssignmentViewSet(viewsets.ModelViewSet):
         if course.teacher != request.user:
             return Response({'error': 'You can only generate assignments for your own courses.'}, status=status.HTTP_403_FORBIDDEN)
 
-        # Extract text from PDF
+        # Extract text from PDF (fast, done synchronously)
         try:
             pdf_text = _extract_pdf_text(pdf_file)
         except Exception as e:
@@ -390,72 +360,20 @@ class AssignmentViewSet(viewsets.ModelViewSet):
         # Truncate to ~12000 chars to stay within token limits
         pdf_text = pdf_text[:12000]
 
-        # Build prompt
-        if assignment_type == 'flashcard':
-            prompt = (
-                'Based on the following text, create 10 educational flashcards.\n'
-                'Return ONLY valid JSON with this exact format (no markdown, no extra text):\n'
-                '{"cards": [{"front": "term or question", "back": "definition or answer"}]}\n\n'
-                f'Text:\n{pdf_text}'
-            )
-        else:
-            prompt = (
-                'Based on the following text, create a quiz with 10 multiple-choice questions.\n'
-                'Each question must have 4 answer options. The options must be the actual answer text, '
-                'NOT letter labels. Do NOT prefix options with "A.", "B.", etc.\n'
-                'Return ONLY valid JSON (no markdown, no extra text) with this exact structure:\n'
-                '{"questions": [{"question": "What is photosynthesis?", '
-                '"options": ["The process of converting light to energy", '
-                '"The process of cell division", '
-                '"The process of water absorption", '
-                '"The process of respiration"], '
-                '"correct": 0}]}\n'
-                '"correct" is the zero-based index (0-3) of the correct option.\n\n'
-                f'Text:\n{pdf_text}'
-            )
-
-        # Call OpenAI
-        try:
-            ai_response = _call_openai_api(api_key, prompt)
-        except ValueError as e:
-            return Response({'error': str(e)}, status=status.HTTP_502_BAD_GATEWAY)
-
-        # Parse JSON from response (handle markdown code blocks)
-        raw = ai_response.strip()
-        if raw.startswith('```'):
-            lines = raw.split('\n')
-            lines = lines[1:]  # remove opening ```json
-            if lines and lines[-1].strip() == '```':
-                lines = lines[:-1]
-            raw = '\n'.join(lines)
-
-        try:
-            content = json.loads(raw)
-        except json.JSONDecodeError:
-            return Response(
-                {'error': 'AI returned invalid JSON. Please try again.', 'raw_response': ai_response},
-                status=status.HTTP_502_BAD_GATEWAY,
-            )
-
-        if not title:
-            title = f'{assignment_type.capitalize()} - {course.code}'
-
-        # Save the PDF and assignment
-        assignment = Assignment.objects.create(
-            course=course,
-            title=title,
+        # Offload OpenAI call + assignment creation to Celery worker
+        task = generate_assignment_task.delay(
+            course_id=course.pk,
+            user_id=request.user.pk,
             assignment_type=assignment_type,
-            content=content,
-            source_file=pdf_file,
-            created_by=request.user,
-            deadline=deadline_val,
+            pdf_text=pdf_text,
+            title=title,
+            deadline_str=deadline_str,
         )
 
-        if assignment.deadline:
-            self._notify_deadline(assignment)
-
-        serializer = self.get_serializer(assignment)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(
+            {'message': 'Assignment generation started.', 'task_id': task.id},
+            status=status.HTTP_202_ACCEPTED,
+        )
 
 
 class AssignmentSubmissionViewSet(viewsets.ModelViewSet):
